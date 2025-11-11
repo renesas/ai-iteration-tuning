@@ -1,0 +1,60 @@
+<?xml version="1.0" ?>
+
+<project>
+    <name>common</name>
+    <include_dirs>        <!-- relative to repository root -->
+        <include>ra_cfg</include>
+    	<include>ra_cfg/fsp_cfg</include>
+		<include>ra_cfg/fsp_cfg/bsp</include>
+		<include>ra_cfg/aws</include>
+		<include>ra_gen</include>
+        <include>src</include>
+        <include>src/usb_pcdc</include>
+        <include>src/ai_application</include>
+        <include>src/ai_application/mera</include>
+        <include>src/external_memory</include>   
+        <include>ra/fsp/inc</include>
+        <include>ra/fsp/inc/api/cmsis/Include</include>
+        <include>ra/fsp/inc/api</include>
+        <include>ra/fsp/inc/instances</include>
+        <include>ra/arm/CMSIS_6/CMSIS/Core/Include</include>
+        <include>ra/arm/CMSIS-View/EventRecorder/Config</include>    
+        <include>ra/arm/CMSIS-View/EventRecorder/Include</include>  
+        <include>ra/arm/CMSIS-NN</include>
+        <include>ra/arm/CMSIS-NN/Include</include>
+        <include>ra/arm/CMSIS-DSP</include>
+        <include>ra/arm/CMSIS-DSP/Include</include>
+        <include>ra/arm/CMSIS-DSP/PrivateInclude</include>
+        <include>ra/aws/FreeRTOS/FreeRTOS/Source/include</include>
+        <include>ra/fsp/src/bsp/cmsis/Device/RENESAS/Include</include>
+        <include>ra/fsp/src/rm_freertos_port</include>
+        <include>ra/fsp/src/bsp/mcu/${MCU}/!linker/${COMPILER}/${PROJECT_TYPE}</include>
+        <!-- <include>ra/fsp/src/bsp/mcu/ra8p1</include> -->
+        <include>ra/fsp/src/bsp/mcu/all</include>
+    </include_dirs>
+    <common_dirs> <!-- relative to repository root -->
+        <!-- bsp_common.c must be built with the test specific build configurations in order for the error logging tests to build. -->
+        <src>ra/fsp/src/bsp/mcu/all</src>
+        <src>ra/fsp/src/bsp/mcu/ra8p1</src>
+        <src>ra/fsp/src/bsp/cmsis/Device/RENESAS/Source</src>        
+    </common_dirs>
+    <exclude_dirs>
+        <exclude>.xml_tests</exclude>
+    </exclude_dirs>
+    <no_instrument_files>        <!-- Do not instrument these for coverage -->
+        <!-- <src>ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/startup.c</src> -->
+        <!-- <src>ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/system.c</src> -->
+        <!-- <src>ra/fsp/src/bsp/mcu/all/bsp_delay.c</src>         -->
+    </no_instrument_files>
+    <!-- <common_macros>
+        <macro>UNITY_INCLUDE_CONFIG_H=1</macro>
+        <macro>UNITY_OUTPUT_CHAR=fsp_rtt_putchar</macro>
+        <macro>FSP_TEST_NO_SEMIHOSTING=1</macro>
+    </common_macros> -->
+    <linker_scripts>        <!-- relative to repository root or linker_paths -->
+        <script>script/${COMPILER}/fsp</script>
+    </linker_scripts>
+    <linker_includes>
+        <path>ra/fsp/src/bsp/mcu/${MCU}/!linker/llvm</path>
+    </linker_includes>
+</project>
