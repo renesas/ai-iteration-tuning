@@ -143,12 +143,6 @@ class build_obj(object):
         elif type.text == 'tz_ns':
             type_str='tz_ns'
             new_proj = project_tz_nonsecure(filename, xml_root)
-        elif type.text == 'boot':
-            type_str='boot'
-            new_proj = project_boot_app(filename, xml_root)
-        # elif type.text == 'aws_qual':
-        #     type_str='aws_qual'
-        #     new_proj = project_aws(filename, xml_root)
         elif type.text == 'secondary_core':
             type_str='secondary_core'
             new_proj = project_secondary_core(filename, xml_root)
@@ -376,10 +370,19 @@ class build_obj(object):
             if key:
                 build_config_name = project_name + '_' + key
 
-            output_file = 'build_' + build_config_name + '_debug'
-            output_dir = os.path.join('build', project.module_name, board, toolchain.name, output_file)
-            output_file_path = os.path.join(output_dir, output_file)
-            output_elf_file = output_file_path + '.elf'
+            # output_file = 'build_' + build_config_name + '_debug'
+            # output_dir = os.path.join('build', project.module_name, board, toolchain.name, output_file)
+            # output_file_path = os.path.join(output_dir, output_file)
+            # output_elf_file = output_file_path + '.elf'
+
+            # Force a single output: .\build\baseline_cv_win_ra8p1_ek_npu_llvm_usbhs.elf
+            output_basename = 'baseline_cv_win_ra8p1_ek_npu_llvm_usbhs'
+            output_dir = os.path.join('build')                  # .\build
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            output_file = output_basename                       # used by SCons Program target below
+            output_file_path = os.path.join(output_dir, output_basename)  # .\build\baseline_cv_win_ra8p1_ek_npu_llvm_usbhs (no ext)
+            output_elf_file = output_file_path + '.elf'         # .\build\baseline_cv_win_ra8p1_ek_npu_llvm_usbhs.elf
 
             if GetOption('build_config') and GetOption('build_config') != build_config_name and project.module_name not in g_dependent_projects:
                 continue
