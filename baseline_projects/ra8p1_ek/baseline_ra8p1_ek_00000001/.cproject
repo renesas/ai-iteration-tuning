@@ -52,7 +52,7 @@
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.406016643" name="ARM family" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family" value="com.renesas.cdt.managedbuild.llvm.arm.option.armspecific.family.cortex-m85" valueType="enumerated"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.1059741612" name="Float ABI" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu" value="com.renesas.cdt.managedbuild.llvm.arm.option.armspecific.fpu.hard" valueType="enumerated"/>
 							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="com.renesas.cdt.managedbuild.llvm.core.targetPlatform.708195372" isAbstract="false" osList="all" superClass="com.renesas.cdt.managedbuild.llvm.core.targetPlatform"/>
-							<builder buildPath="${workspace_loc:/baseline_project}/Debug" id="com.renesas.cdt.managedbuild.llvm.core.builder.1224610084" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="LLVM  for Renesas Builder" parallelBuildOn="true" parallelizationNumber="optimal" superClass="com.renesas.cdt.managedbuild.llvm.core.builder"/>
+							<builder buildPath="${workspace_loc:/baseline_ra8p1_ek_00000001}/Debug" id="com.renesas.cdt.managedbuild.llvm.core.builder.1224610084" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="LLVM  for Renesas Builder" parallelBuildOn="true" parallelizationNumber="optimal" superClass="com.renesas.cdt.managedbuild.llvm.core.builder"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.279930273" name="SMS Assembler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.1037475045" name="Library Generator" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen">
 								<option id="com.renesas.cdt.managedbuild.llvm.arm.option.libraryType.1803719002" name="Library type" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.libraryType" value="com.renesas.cdt.managedbuild.llvm.core.option.librarygenerator.settings.libraryType.preBuilt" valueType="enumerated"/>
@@ -4533,7 +4533,7 @@
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.1952853813" name="ARM family" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family" value="com.renesas.cdt.managedbuild.llvm.arm.option.armspecific.family.cortex-m85" valueType="enumerated"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.1074991169" name="Float ABI" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu" value="com.renesas.cdt.managedbuild.llvm.arm.option.armspecific.fpu.hard" valueType="enumerated"/>
 							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="com.renesas.cdt.managedbuild.llvm.core.targetPlatform.1842375393" isAbstract="false" osList="all" superClass="com.renesas.cdt.managedbuild.llvm.core.targetPlatform"/>
-							<builder buildPath="${workspace_loc:/baseline_project}/Release" id="com.renesas.cdt.managedbuild.llvm.core.builder.1141445086" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="LLVM  for Renesas Builder" parallelBuildOn="true" parallelizationNumber="optimal" superClass="com.renesas.cdt.managedbuild.llvm.core.builder"/>
+							<builder buildPath="${workspace_loc:/baseline_ra8p1_ek_00000001}/Release" id="com.renesas.cdt.managedbuild.llvm.core.builder.1141445086" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="LLVM  for Renesas Builder" parallelBuildOn="true" parallelizationNumber="optimal" superClass="com.renesas.cdt.managedbuild.llvm.core.builder"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.1612552896" name="SMS Assembler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.414355249" name="Library Generator" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen">
 								<option id="com.renesas.cdt.managedbuild.llvm.arm.option.libraryType.628377786" name="Library type" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.libraryType" value="com.renesas.cdt.managedbuild.llvm.core.option.librarygenerator.settings.libraryType.preBuilt" valueType="enumerated"/>
@@ -4951,15 +4951,15 @@
 		</cconfiguration>
 	</storageModule>
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-		<project id="baseline_project.com.renesas.cdt.managedbuild.llvm.arm.projectType.Id.2130495989" name="Executable" projectType="com.renesas.cdt.managedbuild.llvm.arm.projectType.Id"/>
+		<project id="baseline_ra8p1_ek_00000001.com.renesas.cdt.managedbuild.llvm.arm.projectType.Id.2130495989" name="Executable" projectType="com.renesas.cdt.managedbuild.llvm.arm.projectType.Id"/>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="refreshScope" versionNumber="2">
 		<configuration configurationName="Debug">
-			<resource resourceType="PROJECT" workspacePath="/baseline_project"/>
+			<resource resourceType="PROJECT" workspacePath="/baseline_ra8p1_ek_00000001"/>
 		</configuration>
 		<configuration configurationName="Release">
-			<resource resourceType="PROJECT" workspacePath="/baseline_project"/>
+			<resource resourceType="PROJECT" workspacePath="/baseline_ra8p1_ek_00000001"/>
 		</configuration>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>

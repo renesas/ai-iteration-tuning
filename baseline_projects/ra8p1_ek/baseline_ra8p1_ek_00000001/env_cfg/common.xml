@@ -29,7 +29,6 @@
         <include>ra/fsp/src/bsp/cmsis/Device/RENESAS/Include</include>
         <include>ra/fsp/src/rm_freertos_port</include>
         <include>ra/fsp/src/bsp/mcu/${MCU}/!linker/${COMPILER}/${PROJECT_TYPE}</include>
-        <!-- <include>ra/fsp/src/bsp/mcu/ra8p1</include> -->
         <include>ra/fsp/src/bsp/mcu/all</include>
     </include_dirs>
     <common_dirs> <!-- relative to repository root -->
@@ -42,15 +41,7 @@
         <exclude>.xml_tests</exclude>
     </exclude_dirs>
     <no_instrument_files>        <!-- Do not instrument these for coverage -->
-        <!-- <src>ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/startup.c</src> -->
-        <!-- <src>ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/system.c</src> -->
-        <!-- <src>ra/fsp/src/bsp/mcu/all/bsp_delay.c</src>         -->
     </no_instrument_files>
-    <!-- <common_macros>
-        <macro>UNITY_INCLUDE_CONFIG_H=1</macro>
-        <macro>UNITY_OUTPUT_CHAR=fsp_rtt_putchar</macro>
-        <macro>FSP_TEST_NO_SEMIHOSTING=1</macro>
-    </common_macros> -->
     <linker_scripts>        <!-- relative to repository root or linker_paths -->
         <script>script/${COMPILER}/fsp</script>
     </linker_scripts>

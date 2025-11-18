@@ -5,34 +5,6 @@
             <board>ra8p1_ek</board>
         </boards>
         <include_dirs>        <!-- relative to repository root -->
-            <!-- <include>ra/fsp/inc</include>
-            <include>ra/fsp/inc/api/cmsis/Include</include>
-            <include>ra/fsp/inc/api</include>
-            <include>ra/fsp/inc/instances</include>
-            <include>src/time_counter</include>
-			<include>src/ai_application</include>
-            <include>ra/arm/CMSIS_6/CMSIS/Core/Include</include>
-            <include>ra/arm/CMSIS_6/CMSIS/Core/Include/a-profile</include>
-            <include>ra/arm/CMSIS_6/CMSIS/Core/Include/m-profile</include>
-            <include>ra/arm/CMSIS_6/CMSIS/Core/Include/r-profile</include>
-            <include>ra/npu/ethos-u-core-software/lib/arm_profiler/include</include>
-            <include>ra/npu/ethos-u-core-software/lib/layer_by_layer_profiler/include</include>
-            <include>ra/npu/tflite-micro</include>
-            <include>ra/npu/gemmlowp</include>
-            <include>ra/npu/tflite-micro/signal/micro/kernels</include>
-            <include>ra/npu/gemmlowp/fixedpoint</include>
-            <include>ra/npu/flatbuffers/include</include>
-            <include>ra/npu/ruy</include>
-            <include>ra/npu/ethos-u-core-software/lib/crc/include</include>
-            <include>ra/npu/ethos-u-core-software/lib/ethosu_monitor/include</include>
-            <include>ra/fsp/src/bsp/mcu/all/</include>
-            <include>ra/fsp/src/rm_freertos_port</include>
-            <include>ra/fsp/src/rm_ethosu</include>
-            <include>ra/npu/ethos-u-core-driver/include</include>            
-            <include>ra/fsp/src/bsp/mcu/${MCU}/!linker/${COMPILER}/${PROJECT_TYPE}</include>
-            <include>ra/npu/ethos-u-core-software/lib/ethosu_profiler/include</include>            
-            <include>ra/fsp/src/r_usb_basic/src/driver/inc</include>
-            <include>ra/fsp/src/r_usb_basic/src/hw/inc</include>             -->
             <include>src</include>
             <include>ra/fsp/inc</include>
             <include>ra/fsp/inc/api</include>
@@ -95,10 +67,6 @@
             <src>src/ai_application</src>
             <src>src/ai_application/mera</src>
             <src>ra/npu/tflite-micro</src>
-            <!-- <src>src/hal_entry.c</src>
-            <src>src/ethosu_dcache.c</src>
-            <src>src/usb_thread_entry.c</src>
-            <src>src/ai_inference_thread_entry.c</src>  -->
             <src>ra/npu/ethos-u-core-driver/src</src>
             <src>ra/npu/ethos-u-core-software/lib</src>
             <src>ra/npu/ethos-u-core-software/lib/arm_profiler/src</src>
@@ -141,9 +109,6 @@
         <main_macro_configurations>
             <main_macro_configuration>
                 <macro name="test">BSP_CFG_RTOS=2</macro>
-                <!-- <macro name="Ch1">ACMPHS_B_CFG_PARAM_CHECKING_ENABLE=0,TEST_ACMPHS_B_CHANNEL=1</macro>
-                <macro name="Ch0_pc">ACMPHS_B_CFG_PARAM_CHECKING_ENABLE=1,TEST_ACMPHS_B_CHANNEL=0</macro>
-                <macro name="Ch1_pc">ACMPHS_B_CFG_PARAM_CHECKING_ENABLE=1,TEST_ACMPHS_B_CHANNEL=1</macro> -->
             </main_macro_configuration>
         </main_macro_configurations>
     </project>
