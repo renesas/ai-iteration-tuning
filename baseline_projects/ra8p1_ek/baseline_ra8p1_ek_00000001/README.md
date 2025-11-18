@@ -1,4 +1,4 @@
-This is v0.3.0
+This is v0.1.0
 
 Board: RA8P1
 Kit type: EK
