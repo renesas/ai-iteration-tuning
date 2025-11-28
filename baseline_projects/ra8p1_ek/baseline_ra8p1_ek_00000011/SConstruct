@@ -1,0 +1,1490 @@
+import atexit
+import copy
+import hashlib
+import itertools
+from pathlib import Path
+import multiprocessing
+import ntpath
+import operator
+import os, shutil
+import re
+import threading
+import yaml
+from lxml import etree # lxml preserves element order when parsing
+from subprocess import Popen, PIPE, call
+from subprocess import check_output, check_call
+from SCons.Script import AddOption, GetOption, SetOption
+
+from collections import defaultdict
+
+# FSP python libraries
+#sys.path.append('scripts/artifacts')
+#from parse_objdump import parse_code_size
+
+# Common file names and locations
+CONST_PROJECT_XML_DIR = 'env_cfg'
+CONST_COMMON_PROJECT_FILE = 'env_cfg/common.xml'
+CONST_COMMON_TZ_S_PROJECT_FILE = 'env_cfg/common_tz_s.xml'
+CONST_COMMON_TZ_NS_PROJECT_FILE = 'env_cfg/common_tz_ns.xml'
+
+CONST_COMMON_PRIMARY_CORE_PROJECT_FILE = 'env_cfg/common_primary_core.xml'
+CONST_COMMON_SECONDARY_CORE_PROJECT_FILE = 'env_cfg/common_secondary_core.xml'
+
+CONST_COMMON_TOOLS_FILE = 'env_cfg/tools.yml'
+CONST_TOOLS_CFG_FILE_NAME = 'env_cfg/tools_cfg.xml'
+CONST_TOOLS_CFG_REF_FILE_NAME = 'env_cfg/tools_cfg_ref.xml'
+CONST_MCU_CFG_FILE = 'env_cfg/mcu_cfg.yml'
+
+# Define the core and default optimization level build(s) for each part.
+with open(CONST_MCU_CFG_FILE, 'r') as f:
+    CONST_MCU_DICT = yaml.load(f, Loader=yaml.Loader)
+
+# Lookups for the features of the different cores.
+CONST_CORE_FPU_DICT = { '23':None,
+                        '33':'5',
+                        '4' :'4',
+                        '85':'5' }
+CONST_CORE_CMSE_DICT = { '23':False,
+                         '33':True,
+                         '4' :False,
+                         '85':True }
+CONST_CORE_ARM_ARCH_DICT = { '23':'__ARM_ARCH_8M_BASE__',
+                             '33':'__ARM_ARCH_8M_MAIN__',
+                             '4' :'__ARM_ARCH_7EM__',
+                             '85':'__ARM_ARCH_8_1M_MAIN__' }
+CONST_CORE_ARM_ARCH_FLAGS_DICT = { '23':'',
+                                   '33':'',
+                                   '4' :'',
+                                   '85' :''}
+CONST_CORE_ARM_GCC_85_HACKS_DICT = { 'primary_core' : '33' }
+CONST_EXTRA_WARNINGS = True
+CONST_GCOV_MIN_HEAP_SIZE = 0x1000
+CONST_GCOV_MIN_STACK_SIZE = 0xD00
+
+# Global Variables
+g_dependent_projects = []
+g_project_list = []
+g_scons_cache_dir = ''
+GetOption: any
+# Set number of CPUs to enable parallel build
+num_cpus = multiprocessing.cpu_count()
+# Run with one more job than cores.
+#  - Though not entirely scientific, in my testing this seems to yeild about a 5-10% speed improvement, more did not seem to be better though.
+SetOption('num_jobs', num_cpus+1)
+print("running with -j " + str(GetOption('num_jobs')))
+
+# This function is borrowed from 'scripts/utility.py'
+def find_project_xml_files(module):
+    module = module.lower()
+    project_list = []
+    if not os.path.exists(module):
+        for path, dirs, filenames in os.walk(CONST_PROJECT_XML_DIR):
+            for dir_iter in dirs:
+                if module == dir_iter.lower():
+                    project_dir = os.path.join(path, dir_iter)
+                    if os.path.exists(project_dir):
+                        module = project_dir
+                        break
+            if not os.path.exists(module):
+                for filename in filenames:
+                    if filename.lower() == module + '.xml' or filename.lower() == module:
+                        module = os.path.join(path, filename)
+                        break
+    if not os.path.exists(module):
+        return []
+    if os.path.isdir(module):
+        for path, _, filenames in os.walk(module):
+            for filename in filenames:
+                project_file = os.path.abspath(path + '/' + filename)
+                project_list.append(project_file)
+    else:
+        project_file = os.path.abspath(module)
+        project_list.append(project_file)
+
+    return project_list
+
+# Define build class to store all variables related to build
+class build_obj(object):
+    def __init__(self, tools_def_yml):
+        self.toolchains = []
+        self.projects = {} # Includes build variants
+        self.build_stack = []
+        self.project_files = [] # List of files processed
+        self.target_groups = {}
+
+        # Get toolchain configurations
+        self._parse_toolchains(tools_def_yml, self.toolchains)
+
+    def _add_project(self, filename, xml_root):
+        if xml_root.tag == "projects":
+            for new_root in xml_root.findall("project"):
+                self._add_project(filename, new_root)
+            return
+
+        type = xml_root.find("type")
+
+        # Add projects according to type
+        #  - Default to 'flat' project type
+        if type is None or type.text == 'flat':
+            type_str='flat'
+            new_proj = project_common(filename, xml_root)
+        elif type.text == 'tz_s':
+            type_str='tz_s'
+            new_proj = project_tz_secure(filename, xml_root)
+        elif type.text == 'tz_s_only':
+            type_str='tz_s_only'
+            new_proj = project_tz_secure(filename, xml_root)
+            new_proj.type = type_str
+        elif type.text == 'tz_ns':
+            type_str='tz_ns'
+            new_proj = project_tz_nonsecure(filename, xml_root)
+        elif type.text == 'secondary_core':
+            type_str='secondary_core'
+            new_proj = project_secondary_core(filename, xml_root)
+        elif type.text == 'primary_core':
+            type_str='primary_core'
+            new_proj = project_primary_core(filename, xml_root)
+        else:
+            # Unknown build type
+            assert()
+
+        # Get unique but deterministic name for this build, so we can reference it later
+        hash_gen = hashlib.sha256()
+        xml_items = [str(e.text) if e is not None else '' for e in xml_root.iter()]
+        str_cat = ''.join(xml_items).encode()
+        hash_gen.update(str_cat)
+        build_key = new_proj.module_name+"_"+type_str+"_"+str(hash_gen.hexdigest())
+
+        # Add project and dependencies if we haven't already
+        # Use stack to keep track of required build order.
+        if build_key not in self.build_stack:
+            self.projects[build_key] = new_proj
+            self.build_stack.append(build_key)
+
+            for p in new_proj.dependencies:
+                g_dependent_projects.append(p)
+                self.add_project(p)
+
+    def add_project(self, project):
+        # @proj_name can be a directory or project name
+        # e.g. a value of 'projects' will build all project xmls contained in the 'projects' folder
+
+        # Find build xml, reduce to xmls that haven't been processed yet
+        project_files = find_project_xml_files(project)
+        project_files = [e for e in project_files if e.endswith('.xml')]
+        project_files = [e for e in project_files if not any(filter(lambda x: e.endswith(f'{x}.xml'), GetOption('exclude_projects')))]
+        project_files = [e for e in project_files if e not in self.project_files]
+
+        # Mark files processed early to short-circuit recursion
+        self.project_files = self.project_files + project_files
+
+        # Add all projects defined in the xml
+        for file in project_files:
+            tree = etree.parse(file)
+            root = tree.getroot()
+            self._add_project(file, root)
+
+    def do_builds(self):
+        arg_toolchain = GetOption('compiler')
+        print("tool chain:",arg_toolchain)
+        arg_project = GetOption('project')
+        print("Project: ",arg_project)
+        # Build all projects that have already been added
+        # NOTE: Stack used to manage order
+        while self.build_stack:
+            build_key = self.build_stack.pop()
+            project = self.projects[build_key]
+
+            # Skip processing for non-libraries if --only_libs is specified
+            if CONST_ONLY_LIBS and not (project.create_lib or project.build_module_source_only):
+                continue
+
+            # Filter boards, toolchains
+            arg_board = GetOption('board')
+            print("Board: ",arg_board)
+            arg_board_list = arg_board.replace("\"", "").rstrip(" ").split(" ") if arg_board else []
+            boards = []
+            for e in project.boards:
+                if (0 == len(arg_board_list)) or any(board_token in e for board_token in arg_board_list):
+                    boards.append(e)
+            if not boards:
+                continue
+
+            toolchains = [e for e in self.toolchains if not arg_toolchain or e.name == arg_toolchain]
+            toolchains = [e for e in toolchains if e.name not in project.skip_compiler]
+
+            if arg_project and arg_project != project.name and project.module_name not in g_dependent_projects:
+                continue
+
+            dbg_info_toolchains = [e.name for e in toolchains]
+            dbg_info_boards = ["Source Only"] if not boards else boards
+            dbg_info_name = project.name if project.name else 'debug'
+            dbg_info_num_builds = len(dbg_info_toolchains) * len(dbg_info_boards)
+            print("\r\n" + 125*"=" + "\r\n" +\
+                  f"Project: {project.module_name} {project.type} {dbg_info_name} - {dbg_info_num_builds} builds \r\n" +\
+                  f" - {dbg_info_toolchains}\r\n" +\
+                  f" - {dbg_info_boards} \r\n" +\
+                  125*"=")
+            for toolchain in toolchains:
+                # Don't build TrustZone projects with gcov
+                if 'tz' in project.type and CONST_USE_GCOV and toolchain.name == 'gcc':
+                    continue
+                for board in boards:
+                    mcu = board.split('_')[0].lower()
+                    for o_level in CONST_MCU_DICT[mcu]['o_levels']:
+                        self._do_build(o_level, project, toolchain, board)
+
+        # Create test info
+        for key in self.target_groups:
+            with open(os.path.join(key, 'test_info.yml'), 'w') as f:
+                f.write(yaml.dump(self.target_groups[key]))
+
+    # build - Build object
+    # project - XML file that holds 'root'
+    # toolchain - toolchain to use for build
+    # board - target
+    def _do_build(self, o_level, project, toolchain, board):
+        current_mcu = mcu = board.split('_')[0].lower()
+
+        list_of_common_files = []
+        list_of_libs = []
+        list_of_main_files = []
+        list_of_test_files = []
+        list_of_third_party_test_files = []
+        for dir, exclude_boards in (project.common_dirs + project.test_dirs + project.main_dirs + project.third_party_test_dirs):
+            # Skip excluded boards
+            if exclude_boards is not None:
+                if board in exclude_boards:
+                    continue
+
+            filepaths = []
+            if os.path.isfile(dir):
+                temp_path, temp_name = os.path.split(dir)
+                filepaths.append((temp_path, [temp_name]))
+            else:
+                for (dirpath, _, filenames) in os.walk(dir):
+                    filepaths.append((dirpath, filenames))
+
+            for (dirpath, filenames) in filepaths:
+                rel_path = os.path.relpath(dirpath, dir)
+                for filename in filenames:
+                    filepath = os.path.normpath(os.path.join(dirpath, filename))
+                    skip = False
+                    # Skip files that are in an exclude path
+                    if any(exclude in filepath for exclude in project.exclude_dirs):
+                        skip = True
+                    if not (filepath.endswith('.cc') or filepath.endswith('.cpp') or filepath.endswith('.c.template') or filepath.endswith('.c') or filepath.endswith('.s') or filepath.endswith('.S') or filepath.endswith('.a')):
+                        skip = True
+                    if '!' in rel_path:
+                        skip = True
+
+                    # Exclude files for other MCUs
+                    for mcu in project.mcu_dict:
+                        # Don't skip code for other MCUs in test code
+                        if '!' not in os.path.relpath(filepath):
+                            if os.path.sep + mcu.lower() + os.path.sep in filepath.lower():
+                                if mcu.lower() != current_mcu:
+                                    skip = True
+                        cm_core = 'cm' + project.mcu_dict[mcu]
+                        if cm_core in filepath.lower():
+                            if project.mcu_dict[mcu] != project.mcu_dict[current_mcu]:
+                                skip = True
+
+                    # Exclude files for other compilers
+                    for compiler in self.compiler_list:
+                        if compiler.lower() in filepath.lower():
+                            if compiler.lower() != toolchain.name.lower():
+                                skip = True
+                    # Exclude files for other boards
+                    # Don't skip code for other boards in test code
+                    # don't skip for directory named custom in wifi_drivers
+                    if '!' not in filepath and 'wifi_driver' not in filepath:
+                        for board_iter in os.listdir('ra/board'):
+                            if board_iter.lower() in filepath.lower() and board_iter != 'custom':
+                                if board_iter.lower() != board:
+                                    skip = True
+
+                    if skip:
+                        continue
+
+                    if filepath.endswith('.a'):
+                        list_of_libs.append(filepath)
+
+                    # Add file to build if it's a source file or template AND we're building an example project
+                    is_template = filepath.endswith('.c.template') and os.path.relpath(filepath).startswith('ra/fsp/')
+                    is_example = project.build_module_source_only
+                    is_source = filepath.endswith('.c') or filepath.endswith('cpp') or filepath.endswith('cc')
+                    if is_source or (is_template and is_example):
+                        def first(x):
+                            return x[0]
+                        if dir in list(map(first, project.main_dirs)):
+                            list_of_main_files.append(filepath)
+                        if dir in list(map(first, project.third_party_test_dirs)):
+                            list_of_third_party_test_files.append(filepath)
+                        if dir in list(map(first, project.test_dirs)):
+                            list_of_test_files.append(filepath)
+                        if dir in list(map(first, project.common_dirs)):
+                            list_of_common_files.append(filepath)
+
+        # remove duplicate files (can happen if source dirs overlap)
+        list_of_main_files   = list(set(list_of_main_files))
+        list_of_test_files   = list(set(list_of_test_files))
+        list_of_common_files = list(set(list_of_common_files))
+        list_of_third_party_test_files   = list(set(list_of_third_party_test_files))
+
+        # remove source files that are in multiple src groups
+        list_of_no_instrument_files      = project.no_instrument_files
+        list_of_third_party_test_files   = list(filter(lambda x: x not in list_of_no_instrument_files, list_of_third_party_test_files))
+        list_of_main_files   = list(filter(lambda x: x not in list_of_no_instrument_files and x not in list_of_third_party_test_files, list_of_main_files))
+        list_of_test_files   = list(filter(lambda x: x not in list_of_no_instrument_files and x not in list_of_main_files and x not in list_of_third_party_test_files, list_of_test_files))
+        list_of_common_files = list(filter(lambda x: x not in list_of_no_instrument_files and x not in list_of_test_files and x not in list_of_main_files and x not in list_of_third_party_test_files, list_of_common_files))
+
+        # Ensure no module files are in the test files group
+        assert( not any(project.module_name+'.c' in e for e in list_of_test_files)) # Module files should not be listed in '<test_dir>' section of project XML
+
+        # helper function to create common env used for the current project
+        def create_common_env(third_party=False, optimization_level=o_level):
+            env = create_env()
+            configure_project_environment(env, project)
+            configure_build_environment(env, optimization_level, toolchain, project, board.upper())
+            configure_tool_environment(env, toolchain, current_mcu, project, third_party)
+            configure_build_rules(env)
+            return env
+
+        # create env for building common source files
+        common_env = create_common_env()
+
+       # use_gcov = CONST_USE_GCOV and toolchain.name == 'gcc'
+
+        project_name = project.module_name
+        if project.name:
+            project_name += '_' + project.name
+
+        for key in project.main_macro_configurations:
+            build_config_name = project_name
+            if key:
+                build_config_name = project_name + '_' + key
+
+            output_basename = Path().cwd().name
+            output_dir = os.path.join('build')                  # .\build
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            output_file = output_basename                       # used by SCons Program target below
+            output_file_path = os.path.join(output_dir, output_basename)
+            output_elf_file = output_file_path + '.elf'
+
+            if GetOption('build_config') and GetOption('build_config') != build_config_name and project.module_name not in g_dependent_projects:
+                continue
+
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            # Skip builds not in the global build directory
+            if global_build_dir:
+                if 'build' in global_build_dir and global_build_dir not in os.path.relpath(output_dir):
+                    continue
+
+            # Used to hold info for testing
+            build_info = {}
+
+            # Add dependencies to build description
+            secure_import_lib = ''
+            secure_import_elf = ''
+            build_info['dependencies'] = []
+            # Certain project info gets saved to file, except for Trust Zone secure projects
+            for dependency in project.dependencies:
+                if 'tz_ns' == project.type:
+                    # Find all secure object files for this build
+                    secure_import_lib = 'build/' + dependency + '/' + board + '/' + toolchain.name + '/build_' + dependency + '_' + key + '_debug' + '/build_' + dependency + '_' + key + '_debug.elf.o'
+                    secure_import_elf = secure_import_lib[:-len('.o')]
+                    # See if this is AC6 and we need to include the SREC file instead
+                    secure_srec = secure_import_lib[:-len('.elf.o')] + '.srec'
+                    build_info['dependencies'].append(secure_srec)
+                elif 'FSP_BOOTLOADER_PROJECT' in project.test_macros:
+                    # Only typical build supported for boot apps
+                    boot_app = 'build/' + dependency + '/' + board + '/' + toolchain.name + '/build_' + dependency + '_typical_debug' + '/build_' + dependency + '_typical_debug.bin'
+                    boot_app_signed = boot_app.replace('.bin', '.signed.srec')
+                    build_info['dependencies'].append(boot_app_signed)
+
+                    if 'FSP_BOOTLOADER_DOWNLOADER' not in project.test_macros:
+                        secondary_app = 'build/' + dependency + '/' + board + '/' + toolchain.name + '/build_' + dependency + '_secondary_debug' + '/build_' + dependency + '_secondary_debug.bin'
+                        secondary_app_signed = secondary_app.replace('.bin', '.signed.srec')
+                        build_info['dependencies'].append(secondary_app_signed)
+                        build_info['rtt_address_elf'] = secondary_app.replace('.bin', '.elf')
+                    else:
+                        build_info['rtt_address_elf'] = boot_app.replace('.bin', '.elf')
+
+            # create env for building main source files
+            main_env = create_common_env()
+            main_env['CPPDEFINES'].update(project.test_macros)
+            main_env['CPPDEFINES'].update(project.main_macro_configurations[key])
+            main_env['COMMON_FLAGS'] = copy.deepcopy(main_env['COMMON_FLAGS']) + toolchain.extra_flags
+
+            # create env for building test test files
+            test_file_optimization_level = 'typical' if o_level == 'size' else o_level
+            test_env = create_common_env(optimization_level=test_file_optimization_level)
+            test_env['CPPDEFINES'].update(project.test_macros)
+            test_env['CPPDEFINES'].update(project.main_macro_configurations[key])
+
+            # No optimize environment - no coverage
+            no_instrument_env = create_common_env()
+            no_instrument_env['CPPDEFINES'].update(project.test_macros)
+            no_instrument_env['CPPDEFINES'].update(project.main_macro_configurations[key])
+
+            # Don't build tests for TX_ENABLE_IAR_LIBRARY_SUPPORT for GCC or AC6
+            # create env for building third party source files
+            third_party_test_env = create_common_env(third_party=True)
+            third_party_test_env['CPPDEFINES'].update(project.test_macros)
+            third_party_test_env['CPPDEFINES'].update(project.main_macro_configurations[key])
+
+            if static_analyze is not None and toolchain.clang_tidy_com and not project.ignore_warnings:
+                    # The following loop is a hack and likely can be removed when clang-tidy is updated to version 12 or greater
+                    # NOTE: When this is removed, we'll need to add '--assume-filename' to the clang command for it to see the
+                    # 'template' file as a 'c' file.
+                    for file in [e for e in list_of_main_files if not e.endswith('c') or e.endswith('cpp')  or e.endswith('cc')]:
+                        # Move and rename template file
+                        temp_file = file.replace('.c.template', '.c')
+                        temp_file = os.path.join(output_dir, ntpath.basename(temp_file))
+                        shutil.copyfile(file, temp_file)
+
+                        # Replace template file with temp-file in build command
+                        list_of_main_files.remove(file)
+                        list_of_main_files.append(temp_file)
+
+                    # Add Clang Tidy to build command
+                    clang_tidy_com = toolchain.clang_tidy_com
+                    if CONST_CORE_CMSE_DICT[project.mcu_dict[current_mcu]]:
+                        if 'tz_s' == project.type or 'tz_s_only' == project.type:
+                            clang_tidy_com += " -D__ARM_FEATURE_CMSE=3"
+                    main_env["CCCOM"] = clang_tidy_com + os.linesep + main_env["CCCOM"]
+                    test_env["CCCOM"] = clang_tidy_com + os.linesep + test_env["CCCOM"]
+                    no_instrument_env["CCCOM"] = clang_tidy_com + os.linesep + no_instrument_env["CCCOM"]
+
+            # If we need to create a library for this module then we need to create the *.a file and then use
+            # it in final linked elf instead of object files for main_dirs
+            if project.create_lib:
+                # main_objs is empty because we're adding library instead
+                main_objs = []
+                # Still need to create object files for the library
+                lib_objs = main_env.Object(list(map(lambda x: os.path.join(output_dir, x), list_of_main_files)))
+                lib_objs.sort()
+
+                # Build Library
+                output_lib_file = os.path.join(output_dir, 'lib' + project.module_name + '.a')
+                NoCache(output_lib_file)
+                AlwaysBuild(output_lib_file)
+                print("Building lib: " + output_lib_file)
+                main_libs = main_env.StaticLibrary(output_lib_file, lib_objs)
+                # Add newly created library to list of libs to use when creating the ELF
+                list_of_libs.append(str(main_libs[0]))
+            elif not CONST_ONLY_LIBS:
+                main_objs   = main_env.Object(list(map(lambda x: os.path.join(output_dir, x), list_of_main_files)))
+
+            # If we are building only the module source or libraries, skip building test/common files and linking
+            if (project.build_module_source_only) or (CONST_ONLY_LIBS == True) or (project.create_lib):
+                main_env.VariantDir(output_dir, '.', duplicate = 0)
+                continue
+
+            # object files to build
+            #no_instrument_objs      = no_instrument_env.Object(list(map(lambda x: os.path.join(output_dir, x), list_of_no_instrument_files)))
+            common_objs             = common_env.Object(list(map(lambda x: os.path.join(output_dir, x), list_of_common_files)))
+            test_objs               = test_env.Object(list(map(lambda x: os.path.join(output_dir, x), list_of_test_files)))
+            third_party_test_objs   = third_party_test_env.Object(list(map(lambda x: os.path.join(output_dir, x), list_of_third_party_test_files)))
+
+            object_list = (common_objs + test_objs + main_objs + third_party_test_objs )
+
+            # sort list of input files to make output consistent
+            object_list.sort()
+
+            # Linker step
+            # if objects are passed to linker as arguments than the command will be too long and will fail
+            # to solve this problem, objects must be passed in using a file
+            link_file = output_dir + '/' + output_file + '.elf.in'
+            cmd = []
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            with open(link_file, 'w') as f:
+                for object in object_list:
+                    cmd += str(object) + ' '
+                cmd = ''.join(cmd).replace('\\', '/')
+                f.write(cmd)
+
+            lib_names = list(map(lambda x: os.path.basename(x).strip('lib').split('.')[0], list_of_libs))
+            lib_paths = list(map(lambda x: os.path.dirname(x), list_of_libs))
+
+            # Create environment for linking all the objects together
+            exe_env = create_common_env()
+            # For AC6, standard lib is required to build C++ projects
+            if toolchain.name == "ac6" and "__ARMCC_USING_STANDARDLIB" in project.test_macros:
+                exe_env["LINKFLAGS"].remove('--library_type=microlib')
+            exe_env.VariantDir(output_dir, '.', duplicate = 0)
+            target_file = os.path.join(output_dir, output_file)
+
+            # Remove existing binaries so old artifacts are not tested if the build was not successful
+            if os.path.exists(output_elf_file):
+                os.remove(output_elf_file)
+            if os.path.exists(output_elf_file + '.o'):
+                os.remove(output_elf_file + '.o')
+
+            # Add all libraries that were found
+            exe_env['LIBS'] += lib_names
+            exe_env['LIBPATH'] += lib_paths
+            exe_env["LINKFILE"] = link_file
+
+            if project.secondary_linker_includes and 'secondary' in build_config_name:
+                exe_env["LIBINCPATH"] = copy.deepcopy(project.secondary_linker_includes)
+
+            print("Building elf:" + output_elf_file)
+            exe_env['PROJECT_PATH'] = output_file_path
+
+            # For J-Link, program the srec instead of the .elf file
+            # Change output file name to 'srec' in build metadata file
+            output_srec_file = output_elf_file[:-len('.elf')] + '.srec'
+
+            # Write YML file that has project details
+            if 'ac6' == toolchain.name:
+                # Add elf -> srec builder to scons construction environment
+                exe_env.Command(output_srec_file, output_elf_file, 'fromelf --m32combined --output=${TARGET} ${SOURCE}')
+                build_info['application'] = output_srec_file
+            else:
+                build_info['application'] = output_srec_file
+                # Add elf -> srec builder to scons construction environment
+                exe_env.Command(output_srec_file, output_elf_file, 'arm-none-eabi-objcopy ${SOURCE} ${TARGET} -O srec')
+            if 'rtt_address_elf' not in build_info:
+                build_info['rtt_address_elf'] = output_elf_file
+
+            # To reduce cache size, don't cache .elf files
+            NoCache(output_elf_file)
+            AlwaysBuild(output_elf_file)
+
+            # In most cases the secure-only project should be skipped.
+            # Projects with type = tz_s_only are a special case where the unity test framework executes in the secure project.
+            # These project types are not skipped here.
+            if 'tz_s' != project.type:
+                with open(output_file_path + '.yml', 'w') as f:
+                    f.write(yaml.dump(build_info))
+
+
+            elf_output_key = str(build_config_name + ":debug:" + board + ":" + toolchain.name + ":")
+            g_project_list.append((output_elf_file, main_objs, elf_output_key))
+
+            # Link object files together to create executable
+            exe_env['CMSE_IMPORT_LIB'] = secure_import_lib
+            # if 'TX_ENABLE_IAR_LIBRARY_SUPPORT' in test_env['CPPDEFINES'] and 'iar' == toolchain.name:
+                # exe_env['LINKFLAGS'] += toolchain.iar_lib_link_flags
+            if (secure_import_elf):
+                # Ensure the secure project is built before the non-secure project
+                object_list.append(secure_import_elf)
+
+            # Add implicit dependencies to scons environment
+            #  - Some projects define include files via the pre-processor. Scons is not good at
+            #    finding these, so we add them explicitly here.
+            #    NOTE: Currently this makes all build files dependent on the implicit files,
+            #          which could be improved later if needed.
+            implicit_dependencies = []
+            for file in project.implicit_dependencies:
+                for path in project.includes:
+                    full_path = os.path.join(path,file)
+                    if os.path.exists(full_path):
+                        implicit_dependencies.append(full_path)
+                        print('LOG: Implicit dependency: {}'.format(full_path))
+            exe_env.Depends(object_list, implicit_dependencies)
+
+            # Because bsp_override_reg.h is included via a macro, scons will not automatically detect that it is a dependency.
+            bsp_override_reg_headers = [os.path.join(d[0], 'bsp_override_reg.h') for d in os.walk('ra/fsp/src/bsp/mcu/') if 'bsp_override_reg.h' in d[2]]
+            exe_env.Depends(object_list, bsp_override_reg_headers)
+
+            # Queue build
+            exe_env.Program(target = target_file, source = object_list)
+
+    def _parse_toolchains(self, file, toolchains):
+        with open(file, 'r') as f:
+            xml_toolchains = yaml.load(f, Loader=yaml.Loader)
+
+        self.compiler_list = xml_toolchains.keys()
+        for key in self.compiler_list:
+            tc = toolchain(xml_toolchains[key])
+            toolchains.append(tc)
+
+# Define MCUboot class to store all variables related to MCUboot signing
+class mcuboot(object):
+    def __init__(self, bootloader_root):
+        self.name = bootloader_root.find('name').text
+        self.header_size = bootloader_root.find('header_size').text
+        self.slot_size = bootloader_root.find('slot_size').text
+        self.max_sectors = bootloader_root.find('max_sectors').text
+        self.align = bootloader_root.find('align').text
+        self.version = bootloader_root.find('version').text
+        self.secondary_version = bootloader_root.find('secondary_version').text
+        self.primary_slot = bootloader_root.find('primary_slot').text
+        self.secondary_slot = bootloader_root.find('secondary_slot').text
+        self.primary_pad_arg = bootloader_root.find('primary_pad_arg').text
+        self.secondary_pad_arg = bootloader_root.find('secondary_pad_arg').text
+        if self.secondary_pad_arg is None:
+            self.secondary_pad_arg = ''
+        if self.primary_pad_arg is None:
+            self.primary_pad_arg = ''
+
+
+# Define project class to store all variables related to project
+class project_common(object):
+    def __init__(self, file, xml_root=None, common_file=CONST_COMMON_PROJECT_FILE):
+        self.boards = []
+        self.bootloader = None
+        self.common_dirs = []
+        self.common_macros = {}
+        self.dependencies = []
+        self.exclude_dirs = []
+        self.includes = []
+        self.key = ''
+        self.enc_key = ''
+        self.libraries = []
+        self.linker_paths = []
+        self.linker_includes = []
+        self.secondary_linker_includes = []
+        self.linker_scripts = []
+        self.main_dirs = []
+        self.main_macro_configurations = []
+        self.name = ''
+        self.no_instrument_files = []
+        self.skip_compiler = []
+        self.srec_check = []
+        self.test_dirs = []
+        self.test_macros = {}
+        self.third_party_test_dirs = []
+        self.type = 'flat'
+        self.target_group = None
+        self.test_info_init = '{}'
+        self.custom_cxx_flags = defaultdict(list)
+
+        # Populate a list of primary cores using CONST_MCU_DICT
+        self.mcu_dict = {}
+        for mcu in CONST_MCU_DICT:
+            self.mcu_dict[mcu] = CONST_MCU_DICT[mcu]["primary_core"]
+
+        self.filename = os.path.basename(file)
+        self.module_name, _ = os.path.splitext(self.filename)
+
+        # Parse common project information
+        if common_file is not None:
+            common_tree = etree.parse(common_file)
+            common_root = common_tree.getroot()
+            parse_project(common_root, self)
+        if xml_root is not None:
+            parse_project(xml_root, self)
+
+class project_tz_secure(project_common):
+    _xml_file = CONST_COMMON_TZ_S_PROJECT_FILE
+    def __init__(self, filename, xml_root):
+        super().__init__(filename)
+        self.type = 'tz_s'
+        # Extend common_project type
+        extend_tree = etree.parse(self._xml_file)
+        extend_root = extend_tree.getroot()
+        parse_project(extend_root, self)
+        parse_project(xml_root, self)
+
+class project_tz_nonsecure(project_common):
+    _xml_file = CONST_COMMON_TZ_NS_PROJECT_FILE
+    def __init__(self, filename, xml_root):
+        super().__init__(filename)
+        self.type = 'tz_ns'
+
+        # Extend common_project type
+        extend_tree = etree.parse(self._xml_file)
+        extend_root = extend_tree.getroot()
+        parse_project(extend_root, self)
+        parse_project(xml_root, self)
+
+
+class project_secondary_core(project_common):
+
+    def __init__(self, filename, xml_root):
+        #Init base-data
+        project_common.__init__(self, filename)
+        self.type = 'secondary_core'
+
+        # Extend common_project type for secondary core
+        secondary_core_tree = etree.parse(CONST_COMMON_SECONDARY_CORE_PROJECT_FILE)
+        secondary_core_root = secondary_core_tree.getroot()
+        parse_project(secondary_core_root, self)
+        parse_project(xml_root, self)
+
+        # Update mcu_dict to use secondary cores
+        for mcu in CONST_MCU_DICT:
+            if "secondary_core" in CONST_MCU_DICT[mcu]:
+                self.mcu_dict[mcu] = CONST_MCU_DICT[mcu]["secondary_core"]
+
+class project_primary_core(project_common):
+
+    def __init__(self, filename, xml_root):
+        #Init base-data
+        project_common.__init__(self, filename)
+        self.type = 'primary_core'
+
+        # Extend common_project type for primary core
+        primary_core_tree = etree.parse(CONST_COMMON_PRIMARY_CORE_PROJECT_FILE)
+        primary_core_root = primary_core_tree.getroot()
+        parse_project(primary_core_root, self)
+        parse_project(xml_root, self)
+
+# Define toolchain class to store all variables related to toolchain
+class toolchain(object):
+    __slots__ = ['name',
+                 'cc_name',
+                 'cc_com',
+                 'cpp_com',
+                 'clang_tidy_com',
+                 'common_flags',
+                 'cxx_flags',
+                 'c_flags',
+                 'cpp_flags',
+                 'fsp_flags',
+                 'third_party_flags',
+                 'extra_flags',
+                 'cmse_flags',
+                 'cmse_link_flags',
+                 'iar_lib_link_flags',
+                 'fpu_flags',
+                 'fpu_link_flags',
+                 'debug_flags',
+                 'as_name',
+                 'as_com',
+                 'as_flags',
+                 'link_name',
+                 'link_com',
+                 'link_flags',
+                 'link_ext',
+                 'link_script_prefix',
+                 'lib_prefix',
+                 'lib_dir_prefix',
+                 'lib_inc_prefix',
+                 'lib_inc_suffix',
+                 'ar_name',
+                 'ar_com',
+                 'optimization_levels']
+
+    def __init__(self, toolchain_info):
+            get_tc_info = lambda item : toolchain_info[item] if toolchain_info[item] is not None else [] # Safe 'get' for tags that don't always have elements
+            self.name = toolchain_info['name']
+
+            self.cc_name = toolchain_info['cc_name']
+            self.cc_com = toolchain_info['cc_com']
+            self.cpp_com = toolchain_info['cpp_com']
+            self.clang_tidy_com = ''
+            if 'gcc' == self.name:
+                self.clang_tidy_com = toolchain_info['clang_tidy_com']
+                if 'fix' == static_analyze:
+                    self.clang_tidy_com = self.clang_tidy_com.replace('$FIX_OPTION', '-fix')
+                else:
+                    self.clang_tidy_com = self.clang_tidy_com.replace('$FIX_OPTION', '-export-fixes=${TARGET}.fix')
+                self.clang_tidy_com += " -Itest_files/clang_headers"
+            self.as_name = toolchain_info['as_name']
+            self.as_com = toolchain_info['as_com']
+            self.link_name = toolchain_info['link_name']
+            self.link_com = toolchain_info['link_com']
+            self.link_ext = toolchain_info['link_ext']
+            self.lib_prefix = toolchain_info['lib_prefix']
+            self.lib_dir_prefix = toolchain_info['lib_dir_prefix']
+            self.lib_inc_prefix = toolchain_info['lib_inc_prefix']
+            self.lib_inc_suffix = toolchain_info['lib_inc_suffix']
+            self.link_script_prefix = toolchain_info['link_script_prefix']
+            self.ar_name = toolchain_info['ar_name']
+            self.ar_com = toolchain_info['ar_com']
+
+            self.common_flags = get_tc_info('common_flags') # Parse flags common to compiler and linker
+            self.cxx_flags = toolchain_info['cxx_flags'] # Parse flags common to c and cpp
+            self.c_flags = toolchain_info['c_flags'] # Parse C flags
+            self.cpp_flags = toolchain_info['cpp_flags'] # Parse CPP flags
+            self.fsp_flags = toolchain_info['fsp_flags'] # Parse FSP flags
+
+            self.third_party_flags = toolchain_info['third_party_flags'] # Parse CC flags for third party code
+
+            version_env = create_env()
+            # OR with true so this will not fail build jobs if toolchains are not defined in tools_cfg_ref.xml
+            version_env.Command(self.name + '.version', None, self.cc_name + ' --version > ' + self.name + '.version || true')
+
+            self.extra_flags = get_tc_info('extra_flags') # Parse Extra flags
+            self.debug_flags = toolchain_info['debug_flags'] # Parse Debug flags
+            self.cmse_flags = toolchain_info['cmse_flags'] # Parse CMSE flags
+            self.cmse_link_flags = toolchain_info['cmse_link_flags'] # Parse CMSE flags
+            # if 'iar' == self.name:
+                # self.iar_lib_link_flags = toolchain_info['iar_lib_link_flags'] # Parse link flags required for IAR threading support
+            self.fpu_flags = toolchain_info['fpu_flags'] # Parse FPU flags
+            self.fpu_link_flags = get_tc_info('fpu_link_flags') # Parse FPU link flags
+            self.as_flags = toolchain_info['as_flags'] # Parse assembler flags
+            self.link_flags = toolchain_info['link_flags'] # Parse Linker flags
+            self.optimization_levels = toolchain_info['optimization_levels'] # Parse optimization levels
+
+# Parse command line options
+AddOption('--build',
+          dest='global_build_dir',
+          type='string',
+          action='store',
+          metavar='MODULE',
+          help="Module or list of modules to build, for example --build=r_wdt or --build=\"r_adc r_ble r_crc\" must match a file or folder in 'projects' folder")
+
+AddOption('--cfg',
+          dest='build_config',
+          type='string',
+          nargs=1,
+          action='store',
+          help='Build configuration (leave off build_ and _debug: for example, r_wdt_pc_nmi')
+
+AddOption('--board',
+          dest='board',
+          type='string',
+          nargs=1,
+          action='store',
+          help='Board, for example --board=ra6m3_pk')
+
+AddOption('--project',
+          dest='project',
+          type='string',
+          nargs=1,
+          action='store',
+          help="Project <name> defined in XML file in 'projects' folder")
+
+AddOption('--compiler',
+          dest='compiler',
+          type='string',
+          nargs=1,
+          action='store',
+          help='Compiler, for example --compiler=gcc')
+
+AddOption('--fs',
+          dest='function_size',
+          action='store_true',
+          default=False,
+          help='Output the function sizes for all configurations')
+
+AddOption('--static_analyze',
+          dest='static_analyze',
+          default=None,
+          metavar='FIX_OR_EXPORT',
+          help="Add this option to enable clang-tidy for checking violations. 'export' is recommended. "
+          "'fix' applies fixes, but may cause code not to build.  Always commit before using --static_analyze=fix")
+
+AddOption('--only_libs',
+          dest='only_libs',
+          action='store_true',
+          default=False,
+          help='Only create libraries, no ELFs')
+AddOption(
+        '--skip-srec-check',
+        dest='skip_srec_check',
+        action='store_true',
+        default=False,
+        help='Skip SREC post-build verification step')
+
+AddOption('--exclude_project',
+          dest='exclude_projects',
+          type='string',
+          action='append',
+          default=[],
+          help='Skip a project from being built')
+
+AddOption('-O', '--optimization_level',
+          dest='optimization_override',
+          type='string',
+          default=None,
+          help='Override the optimization level')
+
+global_build_dir = GetOption('global_build_dir')
+if global_build_dir:
+    global_build_dir = os.path.relpath(global_build_dir)
+
+#iar_bin_dir = GetOption('iar_bin_dir')
+#CONST_USE_GCOV = GetOption('use_gcov')
+static_analyze = GetOption('static_analyze')
+CONST_FUNCTION_SIZE = GetOption('function_size')
+CONST_ONLY_LIBS = GetOption('only_libs')
+#CONST_DECLUTTER = GetOption('declutter')
+OPTIMIZATION_OVERRIDE = GetOption('optimization_override')
+# Will get this information from tools cfg file if present
+
+def configure_scons_cache(cache_dir):
+    # Handle 'None' type input
+    cache_dir = str(cache_dir)
+
+    # Check if scons cache is valid directory. SCons will actually create a cache directory for you. I'm
+    # not using the path if it does not exist and does not end with 'scons_cache' as I bet that is not
+    # intended. If it is intended (eg: creating new cache) then create the directory before calling SCons.
+    basename = os.path.basename(os.path.normpath(cache_dir))
+    if not os.path.isdir(cache_dir) and 'scons_cache' != basename:
+        print('ENV: SCons cache directory {}, does not exist.'.format(cache_dir))
+        cache_dir = ''
+
+    if cache_dir != '' and not GetOption('cache_disable'):
+        # This is set when creating each environment, but print here to avoid spam
+        print("ENV: SCons cache path: " + cache_dir)
+    else:
+        print("ENV: SCons cache disabled")
+        cache_dir = ''
+    return cache_dir
+
+def update_global_path():
+    if os.path.exists(CONST_TOOLS_CFG_FILE_NAME):
+        tools_cfg = CONST_TOOLS_CFG_FILE_NAME
+    else:
+        tools_cfg = CONST_TOOLS_CFG_REF_FILE_NAME
+
+    # Get the XML tree
+    tree = etree.parse(tools_cfg)
+    root = tree.getroot()
+
+    # Check if <scons_cache_dir> element is found. If so, record path
+    global g_scons_cache_dir
+    cache_elem = root.find('scons_cache_dir')
+    g_scons_cache_dir = cache_elem.text if cache_elem is not None else ''
+    g_scons_cache_dir = configure_scons_cache(g_scons_cache_dir)
+
+    gcc_root = root.find('gcc_install').text
+    llvm_root = root.find('llvm_install').text
+
+    gcc_bin_loc = os.path.join(gcc_root, 'bin')
+    llvm_bin_loc = os.path.join(llvm_root, 'bin')
+
+    print("ENV: GCC 'bin' folder: " + gcc_bin_loc)
+    print("ENV: LLVM 'bin' folder: " + llvm_bin_loc)
+
+    os.environ["PATH"] = gcc_bin_loc + os.pathsep + \
+                         llvm_bin_loc + os.pathsep 
+    default_env = DefaultEnvironment(tools = [])
+
+def create_env():
+    # Create dictionary of environment variables
+    env = Environment(CPPDEFPREFIX = '-D',
+        OBJSUFFIX = '.o',
+        INCPREFIX = '-I',
+        LIBDIRPREFIX = '-L',
+        PROGSUFFIX = '.elf',
+        OPTIMIZATION = '-O0',
+        PROJECT_DIR = CONST_PROJECT_XML_DIR,
+        tools = ['cxx', 'cc', 'as', 'link', 'ar'],
+        )
+
+    if g_scons_cache_dir != '':
+        env.CacheDir(g_scons_cache_dir)
+
+    if static_analyze is not None:
+        env["CLANG_ISYSTEM_PATH"] = os.environ['CLANG_ISYSTEM_PATH']
+
+    env.PrependENVPath('PATH', os.environ['PATH'])
+
+
+    return env
+
+def split_macro_list(macro_list):
+    # Splits a macro list respecting parentheses so arguments can be used in macros.
+    paren_depth = 0
+    start_idx = 0
+    out_list = []
+    for i in range(0,len(macro_list)):
+        if macro_list[i] == '(':
+            paren_depth += 1
+        elif macro_list[i] == ')':
+            paren_depth -= 1
+        elif (macro_list[i] == ',') and (paren_depth == 0):
+            out_list.append(macro_list[start_idx:i])
+            start_idx = i + 1
+    out_list.append(macro_list[start_idx:])
+    return out_list
+
+def parse_xml_path_append(local_list, item):
+    local_list.append(item.text)
+
+def parse_xml_path(root, xml_path_list, local_list, function=parse_xml_path_append):
+    tag = xml_path_list.pop(0)
+    for item in root.findall(tag):
+        if len(xml_path_list) > 0:
+            parse_xml_path(item, xml_path_list, local_list, function)
+        else:
+            function(local_list, item)
+
+def parse_xml_path_dict(local_list, item):
+    try:
+        list = item.text.split('=')
+    except:
+        list = item.split('=')
+    if len(list) > 1:
+        value = list[1]
+    else:
+        value = '1'
+    local_list[list[0]] = value
+    return local_list
+
+def parse_xml_path_limits(local_list, item):
+    # Store source directory and board limits in an array
+    attr = item.get("exclude_boards")
+    exclude_boards = None
+    if attr is not None:
+        exclude_boards = attr.split(',')
+        exclude_boards = [board.strip() for board in exclude_boards]
+    local_list.append([item.text, exclude_boards])
+
+def parse_project(root, project):
+    project.build_module_source_only = False
+    if len(root.findall("module_src_only")) > 0:
+        if 'true' == root.find("module_src_only").text:
+            project.build_module_source_only = True
+
+    project.name = ''
+    if len(root.findall("name")) > 0:
+        project.name = root.find("name").text
+
+    if len(root.findall("key")) > 0:
+        project.key = root.find("key").text
+
+    if len(root.findall("enc_key")) > 0:
+        project.enc_key = root.find("enc_key").text
+
+    # See if we should create a library for this module. Default is False.
+    project.create_lib = False
+    if len(root.findall("create_lib")) > 0:
+        if "true" == root.find("create_lib").text.lower():
+            project.create_lib = True
+
+    # Parse include directories into the provided list
+    xml_path_list = ['include_dirs', 'include']
+    parse_xml_path(root, xml_path_list, project.includes)
+
+    # Parse source directories into the provided list
+    xml_path_list = ['main_dirs', 'src']
+    parse_xml_path(root, xml_path_list, project.main_dirs, parse_xml_path_limits)
+
+    # Check if we should ignore warnings on main_dirs code. This should only be used
+    # in exceptional circumstances. For example, if we do not own the code and cannot
+    # change it.
+    project.ignore_warnings = False
+    if root.find('main_dirs') is not None:
+        if 'ignore_warnings' in root.find('main_dirs').attrib:
+            if root.find('main_dirs').attrib['ignore_warnings'] == 'true':
+                project.ignore_warnings = True
+
+    # For libraries we only need main_dirs code and ignore test macros
+    if not project.create_lib:
+        xml_path_list = ['common_dirs', 'src']
+        parse_xml_path(root, xml_path_list, project.common_dirs, parse_xml_path_limits)
+        project.implicit_dependencies = [re.findall('[a-zA-Z0-9_]+\.h',e)[0] for e in project.test_macros.values() if '.h\\"' in e]
+
+    xml_path_list = ['no_instrument_files', 'src']
+    parse_xml_path(root, xml_path_list, project.no_instrument_files)
+
+    xml_path_list = ['exclude_dirs', 'exclude']
+    parse_xml_path(root, xml_path_list, project.exclude_dirs)
+    project.exclude_dirs = [os.path.normpath(x) for x in project.exclude_dirs]
+
+    # Parse macros into the provided dictionary
+    xml_path_list = ['common_macros', 'macro']
+    parse_xml_path(root, xml_path_list, project.common_macros, parse_xml_path_dict)
+
+    # parse macro configurations
+    options_list = []
+    for main_macro_configuration in root.findall('main_macro_configurations/main_macro_configuration'):
+        options = []
+        # options_list will be [] the first time through this loop so the else will be hit
+        for macro in main_macro_configuration.findall('macro'):
+            options.append((macro.get('name'), split_macro_list(macro.text)))
+        # If options_list is not empty then we need to combine the multiple main_macro_configuration elements
+        if options_list:
+            options_list = list(itertools.product(options_list, options))
+            merged_options_list = []
+            for option1, option2 in options_list:
+                name1, macros1 = option1
+                name2, macros2 = option2
+                if name1 and name2:
+                    merged_name = name1 + '_' + name2
+                else:
+                    merged_name = name1 + name2
+                merged_options_list.append((merged_name, macros1 + macros2))
+                options_list = merged_options_list
+        else:
+            options_list = options
+
+    options_dict = {}
+    for key, macros in options_list:
+        # Check for 'typical' build
+        if key == "":
+            key = 'typical'
+        macro_dict = {}
+        for macro in macros:
+            parse_xml_path_dict(macro_dict, macro)
+        options_dict[key] = macro_dict
+    if not options_dict:
+        options_dict['typical'] = {}
+    project.main_macro_configurations = options_dict
+
+    # Check to see if any framework layer modules are used.  If so, define macros appropriately
+    project.common_macros['BSP_CFG_RTOS'] = '0'
+    for src in project.third_party_test_dirs:
+        # Allow testing of frameworks without ThreadX
+        if os.path.relpath('threadx') in os.path.relpath(src[0]):
+            project.common_macros['BSP_CFG_RTOS'] = '1'
+            break
+        # Allow testing of frameworks without FreeRTOS
+        if os.path.relpath('FreeRTOS') in os.path.relpath(src[0]):
+            project.common_macros['BSP_CFG_RTOS'] = '2'
+            break
+
+    # Parse linker scripts
+    linker_scripts_local = []
+    xml_path_list = ['linker_scripts', 'script']
+    parse_xml_path(root, xml_path_list, linker_scripts_local)
+    if len(linker_scripts_local) > 0:
+        project.linker_scripts = linker_scripts_local
+
+    # Parse linker paths
+    xml_path_list = ['linker_paths', 'path']
+    parse_xml_path(root, xml_path_list, project.linker_paths)
+
+    # Parse linker includes
+    linker_includes_local = []
+    xml_path_list = ['linker_includes', 'path']
+    parse_xml_path(root, xml_path_list, linker_includes_local)
+    if len(linker_includes_local) > 0:
+        project.linker_includes = linker_includes_local
+
+    # Parse secondary linker includes (bootloader XIP app)
+    secondary_linker_includes_local = []
+    xml_path_list = ['secondary_linker_includes', 'path']
+    parse_xml_path(root, xml_path_list, secondary_linker_includes_local)
+    if len(secondary_linker_includes_local) > 0:
+        project.secondary_linker_includes = secondary_linker_includes_local
+
+    # Parse libraries
+    xml_path_list = ['libraries', 'library']
+    parse_xml_path(root, xml_path_list, project.libraries)
+
+    # Parse objects
+    xml_path_list = ['dependencies', 'dependency']
+    parse_xml_path(root, xml_path_list, project.dependencies)
+
+    # Parse board names
+    xml_path_list = ['boards', 'board']
+    parse_xml_path(root, xml_path_list, project.boards)
+
+    # Parse compilers to skip
+    xml_path_list = ['skip_compiler', 'compiler']
+    parse_xml_path(root, xml_path_list, project.skip_compiler)
+
+    custom_cxx_flags_element = root.find('custom_cxx_flags')
+    if None != custom_cxx_flags_element:
+        # Comments are included as children of lxml elements. Filter out comments by checking the type.
+        compiler_elements = filter(lambda x: type(x) == etree._Element, list(custom_cxx_flags_element))
+
+        # Get the tag name from each compiler
+        compilers = list(map(lambda x: x.tag, compiler_elements))
+
+        # Iterate over compilers to get custom cxx flags
+        for compiler in compilers:
+            xml_path_list = [ 'custom_cxx_flags', compiler, 'flag' ]
+            cxx_flags = []
+            parse_xml_path(root, xml_path_list, cxx_flags)
+            project.custom_cxx_flags[compiler] = cxx_flags
+
+def configure_tool_environment(env, toolchain, mcu, project, third_party=False):
+    env["CC"] = toolchain.cc_name
+    env["CXX"] = toolchain.cc_name
+    env["AS"] = toolchain.as_name
+    env["LINK"] = toolchain.link_name
+    env["AR"] = toolchain.ar_name
+    env["CCCOM"] = toolchain.cc_com
+    env["CXXCOM"] = toolchain.cpp_com
+    env["ASCOM"] = toolchain.as_com
+    env["LINKCOM"] = toolchain.link_com
+    env["ARCOM"] = toolchain.ar_com
+    env["_LINKSCRIPTS"] = '$( ${_concat(LINKSCRIPTPREFIX, LINKSCRIPTS, LINKEXT, __env__, RDirs, TARGET, SOURCE)} $)'
+    env["_LIBINCFLAGS"] = '$( ${_concat(LIBINCPREFIX, LIBINCPATH, LIBINCSUFFIX, __env__, RDirs, TARGET, SOURCE)} $)'
+    env["LIBLINKPREFIX"] = toolchain.lib_prefix
+    env["LIBDIRPREFIX"] = toolchain.lib_dir_prefix
+    env["LIBINCPREFIX"] = toolchain.lib_inc_prefix
+    env["LIBINCSUFFIX"] = toolchain.lib_inc_suffix
+    env["LIBLINKSUFFIX"] = ''
+    env["CXXFILESUFFIX"] = '.cpp'
+
+    cxx_flags = copy.deepcopy(toolchain.cxx_flags)
+
+    # FSP and Third Party flags apply to c and c++
+    if third_party or project.ignore_warnings:
+        cxx_flags += toolchain.third_party_flags
+    else:
+        cxx_flags += toolchain.fsp_flags
+
+    if CONST_CORE_FPU_DICT[project.mcu_dict[mcu]]:
+        # Linker flags apply to C and C++. Dont put flags in common_flags because some linkers do not have FPU flags
+        cxx_flags = copy.deepcopy(toolchain.fpu_flags) + cxx_flags
+        env["LINKFLAGS"] = copy.deepcopy(toolchain.link_flags) + toolchain.fpu_link_flags
+        env["FPU_VERSION"] = CONST_CORE_FPU_DICT[project.mcu_dict[mcu]]
+    else:
+        env["LINKFLAGS"] = copy.deepcopy(toolchain.link_flags)
+
+    if CONST_CORE_CMSE_DICT[project.mcu_dict[mcu]]:
+        if 'tz_s' == project.type or 'tz_s_only' == project.type:
+            cxx_flags += toolchain.cmse_flags
+            env["LINKFLAGS"] += toolchain.cmse_link_flags
+
+    # If creating lib, do not add debug flags as that will greatly increase size of library
+    if not project.create_lib and not project.build_module_source_only:
+        cxx_flags += toolchain.debug_flags
+
+    env['CXX_FLAGS'] = cxx_flags + project.custom_cxx_flags[toolchain.name]
+    env['C_FLAGS'] = toolchain.c_flags
+    env['CPP_FLAGS'] = toolchain.cpp_flags
+    env["COMMON_FLAGS"] = toolchain.common_flags
+
+    env["ASFLAGS"] = toolchain.as_flags
+    env["COMPILER"] = toolchain.name
+    env["LINKEXT"] = toolchain.link_ext
+    env["LINKSCRIPTPREFIX"] = toolchain.link_script_prefix
+
+def configure_build_rules(env):
+    # Get global builder and set rule for '.c.template' files to be identical to that of '.c' files
+    import SCons.Tool
+    import SCons.Defaults
+    my_suffix = '.c.template'
+    static_obj, shared_obj = SCons.Tool.createObjBuilders(env)
+    static_obj.add_action(my_suffix, SCons.Defaults.CAction)
+    static_obj.add_emitter(my_suffix, SCons.Defaults.StaticObjectEmitter)
+
+def configure_project_environment(env, project):
+    # Setup project specific environment variables
+    env["LINKSCRIPTS"] = project.linker_scripts
+    env["LIBS"] = copy.deepcopy(project.libraries)
+    env["LIBPATH"] = copy.deepcopy(project.linker_paths)
+    env["LIBINCPATH"] = copy.deepcopy(project.linker_includes)
+
+    # Add include paths
+    env["CPPPATH"] = project.includes
+
+def configure_build_environment(env, o_level, toolchain, project, board):
+
+    # Setup project specific environment variables
+    try:
+        level = toolchain.optimization_levels[o_level]
+        if OPTIMIZATION_OVERRIDE is not None:
+            level = toolchain.optimization_levels[OPTIMIZATION_OVERRIDE]
+    except:
+        print("ERROR: Optimization level " + o_level + " not found in " + toolchain.name + " compiler.")
+        level = toolchain.optimization_levels['none']
+
+    mcu = board.split('_')[0].lower()
+    env["MCU"] = mcu
+    core = project.mcu_dict[mcu]
+    env["CORE"] = core
+    # If project.type is flat then we use linker files in the base of the folder. This is because when we started
+    # there was only 'flat' and it was assumed.
+    if 'flat' != project.type:
+        env["PROJECT_TYPE"] = project.type
+    else:
+        env["PROJECT_TYPE"] = ""
+    # CONST_CORE_ARM_GCC_85_HACKS_DICT is used here because our clang-tidy version is old enough that it does not know about CM85. So we need to trick it to be CM33
+    env['CLANG_TIDY_CORE'] = core if (toolchain.name != 'gcc') or (project.mcu_dict[mcu] != '85') else CONST_CORE_ARM_GCC_85_HACKS_DICT['primary_core']
+
+    macros = {}
+    macros.update(project.common_macros)
+    macros.update({k: v for k, v in [e.split('=') for e in CONST_MCU_DICT[mcu]['macros']]})
+
+    # Add board flag
+    board_macro = board + '_BUILD'
+    macros[board_macro] = '1'
+    # Only apply for RA MCUs and don't override if already provided.
+    if mcu.startswith('ra'):
+        macros.setdefault('_RENESAS_RA_', None)   # -> -D_RENESAS_RA_
+        macros.setdefault('_RA_CORE', 'CPU0')     # -> -D_RA_CORE=CPU0
+        macros.setdefault('_RA_ORDINAL', 1)       # -> -D_RA_ORDINAL=1
+        macros.setdefault('ETHOSU55', None)       # -> -ETHOSU55
+        macros.setdefault('ETHOSU_ARCH', 'u55')   # -> -ETHOSU55
+        #macros.setdefault("BSP_BOARD", "ra8p1_ek")
+        
+    # Used in tools.yml for clang_tidy and llvm
+    env["ARM_ARCH"] = CONST_CORE_ARM_ARCH_DICT[project.mcu_dict[mcu]]
+    # Passed in as common flags from tools.yml
+    env["ARM_ARCH_FLAGS"] = CONST_CORE_ARM_ARCH_FLAGS_DICT[project.mcu_dict[mcu]]
+    env["CORE_UPPER"] = core.upper()
+    env["CORE_SYMBOL"] = core.replace('plus', '+')
+    env["CPPDEFINES"] = macros
+    env["OPTIMIZATION"] = level
+
+    # AC6 imposes arbitrary restrictions on uninitialized data sections, requiring them to start with .bss
+    if 'ac6' == toolchain.name:
+        for key in macros:
+            if '.fsp_dtc_vector_table' in macros[key]:
+                macros[key] = macros[key].replace('.fsp_dtc_vector_table', '.bss.fsp_dtc_vector_table')
+            if '.noinit' in macros[key]:
+                macros[key] = macros[key].replace('.noinit', '.bss.noinit')
+    return macros
+
+# Prints variables for debugging - comment out for release
+def print_env(env):
+    for item in sorted(env.Dictionary().items()):
+        print("construction variable = '%s', value = '%s'" % item)
+
+
+######## Program begins here ########
+if not GetOption('help'):
+    update_global_path()
+
+    # Build a specific project
+    projects_to_build = re.split(",| ", global_build_dir)
+    if not global_build_dir:
+        projects_to_build = [CONST_PROJECT_XML_DIR]
+    print(projects_to_build)
+
+    # Create build Object (gathers toolchains and asst. build info)
+    build = build_obj(CONST_COMMON_TOOLS_FILE)
+    for e in projects_to_build:
+        build.add_project(e)
+    build.do_builds()
+
+def get_code_size(main_obj_path, cmd_out, parsed_code_sizes, idx):
+    out = 0
+    code_sizes = {}
+    if os.path.exists(main_obj_path):
+        out = check_output(['arm-none-eabi-size', '--format=berkeley', main_obj_path])
+
+        if(CONST_FUNCTION_SIZE):
+            f = open(main_obj_path+'.code_size', "w")
+            objdump = check_output(['arm-none-eabi-objdump', '-t', main_obj_path])
+            f.write(objdump)
+            f.close()
+
+            parse_code_size(main_obj_path+'.code_size', code_sizes)
+    cmd_out[idx] = out
+    parsed_code_sizes[idx] = code_sizes
+
+def exit_func():
+    # Store the rtt address for each application in test_info.yml. This will be used by fsp_test_parallel.py in order to
+    # determine the address of the RTT control block.
+    for root,  subdirs, files in os.walk('build/'):
+        if 'test_info.yml' in files:
+            yaml_file = os.path.join(root, 'test_info.yml')
+
+            # Load the yml file into a dictionary
+            with open(yaml_file) as f:
+                yml_dict = yaml.load(f, Loader=yaml.SafeLoader)
+
+            # Loop through the yml file and for each application, get the rtt address.
+            for target_group in yml_dict:
+                for build_config in yml_dict[target_group]:
+                    for project in yml_dict[target_group][build_config]['projects']:
+
+                        # For dual-core target_groups add secondary core image as a dependency
+                        if 'core' in project.keys():
+                            if '0' == project['core']:
+                                # Find secondary core image path and add as dependency
+                                for secondary_project in yml_dict[target_group][build_config]['projects']:
+                                    if '1' == secondary_project['core']:
+                                        project['dependencies'].append(secondary_project['application'])
+
+                        # store_symbol_address is an array of symbols that will be search for in the elf.
+                        # If the symbol is found in the elf, its address will be stored in test_info.yml.
+                        # These symbol addresses can be used by test scripts.
+                        # Ex:
+                        # The rm_mcuboot_port tests specify 'g_pub_key' which is needed to program MCUboot apps.
+                        # 'g_pub_key': <address> is stored in test_info.yml for use by the MCUboot flashing scripts.
+                        if 'store_symbol_address' in project:
+                            application_elf = project['application']
+                            application_elf = application_elf.replace('.srec', '.elf')
+
+                            # Execute readelf command to get the address of project['store_symbol_address']
+                            command_output = str(check_output(['arm-none-eabi-readelf', '-s', application_elf]))
+
+                            symbol_addresses = {}
+                            for symbol in project['store_symbol_address']:
+
+                                # Filter the output to lines that include 'project.store_symbol_address'
+                                command_output_filtered = '\n'.join(list(filter(lambda x: symbol in x, command_output.split('\\n'))))
+
+                                # Example output for readelf command:
+                                #
+                                # 573: 00000080   128 OBJECT  GLOBAL DEFAULT    1 symbol
+                                result = re.search(r'.+: +(.+) +.+ +OBJECT +GLOBAL +.+ +.+ +{symbol_name}$'.format(symbol_name=symbol), command_output_filtered, flags=re.M)
+                                if None != result:
+                                    symbol_address = result.group(1).strip()
+
+                                    # Save the symbol:address
+                                    project[symbol] = symbol_address
+
+                            # The symbol:address pairs are stored to the test_info.yml. The list of symbols to store can be deleted.
+                            del project['store_symbol_address']
+
+                        # Get the RTT block address u[sing arm-none-eabi-nm
+                        output = check_output(['arm-none-eabi-nm',  '-s', project['rtt_address_elf']])
+                        for line in output.decode().split('\n'):
+                            if ' _SEGGER_RTT' in line:
+                                rtt_address = line.split(' ')[0]
+                                project['rtt_address'] = rtt_address
+
+            # Write the results back to the yml file.
+            with open(yaml_file, 'wb') as f:
+                f.write(yaml.safe_dump(yml_dict, encoding='utf-8', allow_unicode=True))
+
+    print("Code Size Calculation")
+
+    code_sizes = []
+    cmd_out = []
+    idx = 0
+    print_idx = 0
+
+    for elf_file, main_objs, _ in sorted(g_project_list):
+        build_output_folder, _ = os.path.split(elf_file)
+        for main_obj in sorted(main_objs):
+            main_obj_path = str(main_obj)
+            # Maintain configured number of threads
+            while(threading.active_count() > GetOption('num_jobs')):
+                pass
+            cmd_out.append(0)
+            code_sizes.append(0)
+            thread = threading.Thread(target=get_code_size, args=(main_obj_path, cmd_out, code_sizes, idx))
+            thread.start()
+            idx = idx + 1
+
+        # Print output as threads finish
+        if len(cmd_out) > print_idx and cmd_out[print_idx] != 0:
+            if 0 == print_idx:
+                # Print Heading
+                print(cmd_out[0].splitlines()[0].decode() + " build name")
+            print(cmd_out[print_idx].splitlines()[1].decode())
+            print_idx = print_idx + 1
+
+    # Wait for all threads to complete
+    while(threading.active_count() > 1):
+        pass
+
+    while(print_idx < len(cmd_out)):
+        try:
+            print(cmd_out[print_idx].splitlines()[1].decode())
+        except:
+            print("Error - Missing build artifact")
+        print_idx = print_idx + 1
+
+    if(CONST_FUNCTION_SIZE):
+      sizes = {}
+      builds = []
+      for full_build, functions in code_sizes.items():
+        build = full_build.split('/')[-2].strip('build_').rstrip('_debug') + '_' + full_build.split('/')[-3]
+        builds.append(build)
+        for function, size in functions.items():
+          if function.split('.')[-1] not in sizes:
+            sizes[function.split('.')[-1]] = {}
+          sizes[function.split('.')[-1]][build] = size
+      for function, configs in sorted(sizes.items(), key=operator.itemgetter(0)):
+        print(function)
+        for config, size in sorted(configs.items(), key=operator.itemgetter(0)):
+          print('\t%s:\t\t%s'%(config, size))
+
+    # Check for elf output files
+    print(" ")
+    for elf_file, _, statement in g_project_list:
+        elf_output_string = "***   The build " + statement + " "
+        while len(elf_output_string) <= 80:
+            elf_output_string += " "
+        if os.path.isfile(elf_file):
+            elf_output_string += "SUCCEEDED"
+        else:
+            elf_output_string += "FAILED"
+        print(elf_output_string)
+
+if not GetOption('clean') and not GetOption('help'):
+    atexit.register(exit_func)

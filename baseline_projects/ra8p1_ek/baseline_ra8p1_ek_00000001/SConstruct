@@ -2,19 +2,14 @@ import atexit
 import copy
 import hashlib
 import itertools
-import json
 import multiprocessing
 import ntpath
 import operator
 import os, shutil
-import platform
+from pathlib import Path
 import re
-import sys
 import threading
-import xml.dom.minidom
 import yaml
-import pdb # Used for debugging. Use pdb.set_trace() to set a breakpoint
-
 from lxml import etree # lxml preserves element order when parsing
 from subprocess import Popen, PIPE, call
 from subprocess import check_output, check_call
@@ -370,19 +365,13 @@ class build_obj(object):
             if key:
                 build_config_name = project_name + '_' + key
 
-            # output_file = 'build_' + build_config_name + '_debug'
-            # output_dir = os.path.join('build', project.module_name, board, toolchain.name, output_file)
-            # output_file_path = os.path.join(output_dir, output_file)
-            # output_elf_file = output_file_path + '.elf'
-
-            # Force a single output: .\build\baseline_ra8p1_ek_00000001.elf
-            output_basename = 'baseline_ra8p1_ek_00000001'
+            output_basename = Path().cwd().name
             output_dir = os.path.join('build')                  # .\build
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
             output_file = output_basename                       # used by SCons Program target below
-            output_file_path = os.path.join(output_dir, output_basename)  # .\build\baseline_ra8p1_ek_00000001 (no ext)
-            output_elf_file = output_file_path + '.elf'         # .\build\baseline_ra8p1_ek_00000001.elf
+            output_file_path = os.path.join(output_dir, output_basename)
+            output_elf_file = output_file_path + '.elf'
 
             if GetOption('build_config') and GetOption('build_config') != build_config_name and project.module_name not in g_dependent_projects:
                 continue
