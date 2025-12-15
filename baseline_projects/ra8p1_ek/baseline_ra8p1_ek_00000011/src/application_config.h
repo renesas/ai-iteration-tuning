@@ -12,8 +12,16 @@
 
 // ###################### MEMORY ALLOCATION ######################
 /* Defines for memory allocation options */
-#define AI_DEMO                             (FACE_DETECTION)
+#define float32 float
+#define int8 int8_t
 
+#define ETHOS                               0
+#define CPU                                 1
+
+//===== This area will be modified by Python ====
+// Define Backend
+#define BACKEND ETHOS
+//===============================================
 #define ALLOCATE_TO_ONCHIP_ROM              0
 #define ALLOCATE_TO_ONCHIP_RAM              1
 #define ALLOCATE_TO_SDRAM                   2 // Buffer will be located in ".sdram"

@@ -1,0 +1,32 @@
+<?xml version="1.0" ?>
+<projects>
+    <project>
+        <boards>
+            <board>ra8d1_ek</board>
+        </boards>
+        <test_dirs> <!-- Test and support files only, no module files should be listed here. - test_dirs files may override optimizations or instrumentation that should be applied to module files -->
+            <src>ra/fsp/src/bsp/mcu/!test/</src>
+        </test_dirs>
+        <main_dirs>
+            <src>ra/fsp/src/bsp/cmsis/Device/RENESAS/Source</src>
+            <src>ra/fsp/src/bsp/mcu/ra8d1/</src>
+            <src>ra/fsp/src/bsp/mcu/all/</src>
+        </main_dirs>
+        <test_macros>
+            <macro>FSP_TEST_FUNCTION=RunAllR_BSP_MCUTests</macro>
+            <macro>BSP_CFG_HANDLE_UNRECOVERABLE_ERROR(x)=extern uint32_t g_fsp_test_unrecoverable_count;g_fsp_test_unrecoverable_count++;</macro>
+            <macro>TEST_BSP_CFG_ERROR_LOG=1</macro>
+            <macro>TEST_BSP_MCUS=1</macro>
+            <macro>BSP_CFG_IRQ_MASK_LEVEL_FOR_CRITICAL_SECTION=5U</macro>
+        </test_macros>
+        <main_macro_configurations>
+            <main_macro_configuration>
+                <macro name="">BSP_CFG_PFS_PROTECT=1</macro>
+                <macro name="no_pfs_protect">BSP_CFG_PFS_PROTECT=0</macro>
+                <macro name="dcache_enabled">BSP_CFG_PFS_PROTECT=1, BSP_CFG_DCACHE_ENABLED=1</macro>
+                <!-- Disabled because changing this OFS bit and reflashing without performing a cold start after reflashing causes issues. See SSDMCUDD-116. -->
+                <!-- <macro name="INITECCEN">BSP_CFG_OPTION_SETTING_OFS1_INITECCEN=&quot;(1U&lt;&lt;25)&quot;</macro> -->
+            </main_macro_configuration>
+        </main_macro_configurations>
+    </project>
+</projects>

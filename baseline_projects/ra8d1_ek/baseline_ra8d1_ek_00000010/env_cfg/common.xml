@@ -1,0 +1,56 @@
+<?xml version="1.0" ?>
+
+<project>
+    <name>common</name>
+    <include_dirs>
+      <include>ra/board/ra8d1_ek</include>
+      <include>ra/arm/CMSIS_6/CMSIS/Core/Include</include>
+      <include>ra/fsp/src/r_usb_pcdc/src/inc</include>
+      <include>ra/fsp/src/r_usb_basic/src/driver/inc</include>
+      <include>ra/fsp/inc/api</include>
+      <include>ra/fsp/src/rm_comms_lock</include>
+      <include>ra/fsp/inc/instances</include>
+      <include>ra_gen</include>
+      <include>ra/arm/CMSIS_6/CMSIS/Core/Include/r-profile</include>
+      <include>ra/arm/CMSIS-NN/Include/Internal</include>
+      <include>ra/arm/CMSIS_6/CMSIS/Core/Include/a-profile</include>
+      <include>ra/fsp/src/bsp/cmsis/Device/RENESAS/Include</include>
+      <include>ra_cfg/fsp_cfg/bsp</include>
+      <include>ra/arm/CMSIS-DSP/Include</include>
+      <include>ra/arm/CMSIS_6/CMSIS/Core/Include/m-profile</include>
+      <include>src/usb_pdcd</include>
+      <include>ra/arm/CMSIS-DSP/Include/dsp</include>
+      <include>ra/arm/CMSIS-DSP/PrivateInclude</include>
+      <include>ra/arm/CMSIS-NN/Include</include>
+      <include>ra/aws/FreeRTOS/FreeRTOS/Source/include</include>
+      <include>ra/fsp/src/r_usb_basic/src/hw/inc</include>
+      <include>src/time_counter</include>
+      <include>src/drivers</include>
+      <include>ra/fsp/src/rm_freertos_port</include>
+      <include>ra_cfg/aws</include>
+      <include>ra/fsp/src/bsp/mcu/ra8d1</include>
+      <include>ra_cfg/fsp_cfg</include>
+      <include>ra/arm/CMSIS-DSP/Source/DistanceFunctions</include>
+      <include>src</include>
+      <include>ra/fsp/src/bsp/mcu/all</include>
+      <include>ra/fsp/inc</include>
+      <include>ra/fsp/src/bsp/mcu/${MCU}/!linker/${COMPILER}/${PROJECT_TYPE}</include>
+    </include_dirs>
+    <common_dirs> <!-- relative to repository root -->
+        <!-- bsp_common.c must be built with the test specific build configurations in order for the error logging tests to build. -->
+        <src>ra/fsp/src/bsp/mcu/all</src>
+        <src>ra/fsp/src/bsp/mcu/ra8d1</src>
+        <src>ra/fsp/src/bsp/cmsis/Device/RENESAS/Source</src>        
+    </common_dirs>
+    <exclude_dirs>
+        <exclude>.xml_tests</exclude>
+    </exclude_dirs>
+    <no_instrument_files>        <!-- Do not instrument these for coverage -->
+    </no_instrument_files>
+    <linker_scripts>        <!-- relative to repository root or linker_paths -->
+        <script>script/fsp</script>
+    </linker_scripts>
+    <linker_includes>
+        <path>ra/fsp/src/bsp/mcu/${MCU}/!linker/gcc</path>
+    </linker_includes>
+</project>

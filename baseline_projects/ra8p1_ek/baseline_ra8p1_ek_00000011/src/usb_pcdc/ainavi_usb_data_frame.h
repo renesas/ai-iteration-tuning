@@ -1,9 +1,12 @@
 /*
- * ainavi_usb_data_frame.h
- *
- *  Created on: Jun 21, 2025
- *      Author: rvc
- */
+* Copyright (c) 2020 - 2025 Renesas Electronics Corporation and/or its affiliates
+*
+* SPDX-License-Identifier: BSD-3-Clause
+*/
+/***********************************************************************************************************************
+ * File Name    : ainavi_usb_data_frame.h
+ * Description  : This file defines usb communication data frame vairables.
+ **********************************************************************************************************************/
 
 #ifndef AINAVI_USB_DATA_FRAME_H_
 #define AINAVI_USB_DATA_FRAME_H_

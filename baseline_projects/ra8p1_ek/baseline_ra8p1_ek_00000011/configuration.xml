@@ -18,7 +18,7 @@
     <config id="config.bsp.ra8p1.R7KA8P1KFLCAC">
       <property id="config.bsp.part_number" value="config.bsp.part_number.value"/>
       <property id="config.bsp.rom_size_bytes" value="config.bsp.rom_size_bytes.value"/>
-      <property id="config.bsp.rom_size_bytes_hidden" value="1048576"/>
+      <property id="config.bsp.rom_size_bytes_hidden" value="config.bsp.rom_size_bytes_hidden.value"/>
       <property id="config.bsp.ram_size_bytes" value="config.bsp.ram_size_bytes.value"/>
       <property id="config.bsp.data_flash_size_bytes" value="config.bsp.data_flash_size_bytes.value"/>
       <property id="config.bsp.package_style" value="config.bsp.package_style.value"/>
@@ -398,29 +398,81 @@
       <description>Common source for all template projects.</description>
       <originalPack>Renesas.RA_common.6.1.0.pack</originalPack>
     </component>
+    <component apiversion="" class="CMSIS" condition="" group="Main" subgroup="NN" variant="" vendor="Arm" version="7.0.0+fsp.6.1.0">
+      <description>Arm NN Library Source</description>
+      <originalPack>Arm.CMSIS-NN.7.0.0+fsp.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="RTOS" condition="" group="FreeRTOS" subgroup="all" variant="" vendor="AWS" version="11.1.0+fsp.6.1.0">
+      <description>FreeRTOS</description>
+      <originalPack>Amazon.FreeRTOS-Kernel.11.1.0+fsp.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="Heaps" condition="" group="FreeRTOS" subgroup="heap_4" variant="" vendor="AWS" version="11.1.0+fsp.6.1.0">
+      <description>FreeRTOS - Memory Management - Heap 4</description>
+      <originalPack>Amazon.FreeRTOS-Kernel.11.1.0+fsp.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="TFLM" condition="" group="Kernel" subgroup="CMSIS-NN" variant="" vendor="Google" version="25.2.0+fsp.6.1.0">
+      <description>TFLM cmsis-nn kernel</description>
+      <originalPack>Google.TFLM-CMSIS-NN-Kernel.25.2.0+fsp.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="CMSIS" condition="" group="Main" subgroup="CoreM" variant="" vendor="Arm" version="6.1.0+fsp.6.1.0">
+      <description>Arm CMSIS Version 6 - Core (M)</description>
+      <originalPack>Arm.CMSIS6.6.1.0+fsp.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="CMSIS" condition="" group="Main" subgroup="DSP" variant="" vendor="Arm" version="1.16.2+fsp.6.1.0">
+      <description>Arm DSP Library Source</description>
+      <originalPack>Arm.CMSIS-DSP.1.16.2+fsp.6.1.0.pack</originalPack>
+    </component>
     <component apiversion="" class="Common" condition="" group="all" subgroup="fsp_common" variant="" vendor="Renesas" version="6.1.0">
       <description>Board Support Package Common Files</description>
+      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_dmac" variant="" vendor="Renesas" version="6.1.0">
+      <description>Direct Memory Access Controller</description>
+      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_gpt" variant="" vendor="Renesas" version="6.1.0">
+      <description>General PWM Timer</description>
       <originalPack>Renesas.RA.6.1.0.pack</originalPack>
     </component>
     <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_ioport" variant="" vendor="Renesas" version="6.1.0">
       <description>I/O Port</description>
       <originalPack>Renesas.RA.6.1.0.pack</originalPack>
     </component>
-    <component apiversion="" class="RTOS" condition="" group="FreeRTOS" subgroup="all" variant="" vendor="AWS" version="11.1.0+fsp.6.1.0">
-      <description>FreeRTOS</description>
-      <originalPack>Amazon.FreeRTOS-Kernel.11.1.0+fsp.6.1.0.pack</originalPack>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_ospi_b" variant="" vendor="Renesas" version="6.1.0">
+      <description>Octa Serial Peripheral Interface Flash</description>
+      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
     </component>
-    <component apiversion="" class="CMSIS" condition="" group="Main" subgroup="CoreM" variant="" vendor="Arm" version="6.1.0+fsp.6.1.0">
-      <description>Arm CMSIS Version 6 - Core (M)</description>
-      <originalPack>Arm.CMSIS6.6.1.0+fsp.6.1.0.pack</originalPack>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_usb_basic" variant="" vendor="Renesas" version="6.1.0">
+      <description>USB Basic</description>
+      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
     </component>
     <component apiversion="" class="Middleware" condition="" group="all" subgroup="rm_freertos_port" variant="" vendor="Renesas" version="6.1.0">
       <description>FreeRTOS Port</description>
       <originalPack>Renesas.RA.6.1.0.pack</originalPack>
     </component>
+    <component apiversion="" class="Middleware" condition="" group="all" subgroup="rm_ethosu" variant="" vendor="Renesas" version="6.1.0">
+      <description>Ethos-U Driver Wrapper Implementation</description>
+      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="Middleware" condition="" group="all" subgroup="rm_comms_usb_pcdc" variant="" vendor="Renesas" version="6.1.0">
+      <description>USB PCDC Communications Implementation</description>
+      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="Flatbuffers" condition="" group="Serialization" subgroup="Lib" variant="" vendor="Google" version="23.5.26+fsp.6.1.0">
+      <description>Flatbuffers</description>
+      <originalPack>Google.Flatbuffers.23.5.26+fsp.6.1.0.pack</originalPack>
+    </component>
     <component apiversion="" class="BSP" condition="" group="Board" subgroup="ra8p1_ek" variant="" vendor="Renesas" version="6.1.0">
       <description>RA8P1-EK Board Support Files</description>
       <originalPack>Renesas.RA_board_ra8p1_ek.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="TFLM" condition="" group="Core" subgroup="Lib" variant="" vendor="Google" version="25.2.0+fsp.6.1.0">
+      <description>TFLM Core Lib</description>
+      <originalPack>Google.TFLM-Core-Lib.25.2.0+fsp.6.1.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="Ethos-U" condition="" group="Core" subgroup="Driver" variant="" vendor="Arm" version="25.2.0+fsp.6.1.0">
+      <description>Ethos-u core driver</description>
+      <originalPack>Arm.Ethos-U-Core-Driver.25.2.0+fsp.6.1.0.pack</originalPack>
     </component>
     <component apiversion="" class="BSP" condition="" group="ra8p1" subgroup="device" variant="R7KA8P1KFLCAC" vendor="Renesas" version="6.1.0">
       <description>Board support package for R7KA8P1KFLCAC</description>
@@ -441,58 +493,6 @@
     <component apiversion="" class="BSP" condition="" group="ra8p1" subgroup="linker" variant="" vendor="Renesas" version="6.1.0">
       <description>Board support package for RA8P1 - Linker</description>
       <originalPack>Renesas.RA_mcu_ra8p1.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="CMSIS" condition="" group="Main" subgroup="NN" variant="" vendor="Arm" version="7.0.0+fsp.6.1.0">
-      <description>Arm NN Library Source</description>
-      <originalPack>Arm.CMSIS-NN.7.0.0+fsp.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="Heaps" condition="" group="FreeRTOS" subgroup="heap_4" variant="" vendor="AWS" version="11.1.0+fsp.6.1.0">
-      <description>FreeRTOS - Memory Management - Heap 4</description>
-      <originalPack>Amazon.FreeRTOS-Kernel.11.1.0+fsp.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="TFLM" condition="" group="Kernel" subgroup="CMSIS-NN" variant="" vendor="Google" version="25.2.0+fsp.6.1.0">
-      <description>TFLM cmsis-nn kernel</description>
-      <originalPack>Google.TFLM-CMSIS-NN-Kernel.25.2.0+fsp.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="CMSIS" condition="" group="Main" subgroup="DSP" variant="" vendor="Arm" version="1.16.2+fsp.6.1.0">
-      <description>Arm DSP Library Source</description>
-      <originalPack>Arm.CMSIS-DSP.1.16.2+fsp.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_dmac" variant="" vendor="Renesas" version="6.1.0">
-      <description>Direct Memory Access Controller</description>
-      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_gpt" variant="" vendor="Renesas" version="6.1.0">
-      <description>General PWM Timer</description>
-      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_ospi_b" variant="" vendor="Renesas" version="6.1.0">
-      <description>Octa Serial Peripheral Interface Flash</description>
-      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_usb_basic" variant="" vendor="Renesas" version="6.1.0">
-      <description>USB Basic</description>
-      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="Middleware" condition="" group="all" subgroup="rm_ethosu" variant="" vendor="Renesas" version="6.1.0">
-      <description>Ethos-U Driver Wrapper Implementation</description>
-      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="Middleware" condition="" group="all" subgroup="rm_comms_usb_pcdc" variant="" vendor="Renesas" version="6.1.0">
-      <description>USB PCDC Communications Implementation</description>
-      <originalPack>Renesas.RA.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="Flatbuffers" condition="" group="Serialization" subgroup="Lib" variant="" vendor="Google" version="23.5.26+fsp.6.1.0">
-      <description>Flatbuffers</description>
-      <originalPack>Google.Flatbuffers.23.5.26+fsp.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="TFLM" condition="" group="Core" subgroup="Lib" variant="" vendor="Google" version="25.2.0+fsp.6.1.0">
-      <description>TFLM Core Lib</description>
-      <originalPack>Google.TFLM-Core-Lib.25.2.0+fsp.6.1.0.pack</originalPack>
-    </component>
-    <component apiversion="" class="Ethos-U" condition="" group="Core" subgroup="Driver" variant="" vendor="Arm" version="25.2.0+fsp.6.1.0">
-      <description>Ethos-u core driver</description>
-      <originalPack>Arm.Ethos-U-Core-Driver.25.2.0+fsp.6.1.0.pack</originalPack>
     </component>
   </raComponentSelection>
   <raElcConfiguration/>

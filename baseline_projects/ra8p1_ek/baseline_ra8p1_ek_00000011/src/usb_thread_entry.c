@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 /**********************************************************************************************************************
- * File Name    : display_thread_entry.c
+ * File Name    : usb_thread_entry.c
  * Version      : .
- * Description  : The display thread operations.
+ * Description  : The USB thread operations.
  *********************************************************************************************************************/
 /***************************************************************************************************************************
  * Includes   <System Includes> , "Project Includes"
@@ -18,7 +18,11 @@
 #include "application_config.h"
 #include "common_util.h"
 #include "time_counter.h"
-#include "wrapper.h"
+#if BACKEND == CPU
+#include "ai_application/mera/compute_sub_0000.h"
+#elif BACKEND == ETHOS
+#include "ai_application/mera/model.h"
+#endif
 /***************************************************************************************************************************
  * Macro definitions
  ***************************************************************************************************************************/
@@ -27,17 +31,12 @@
 /***************************************************************************************************************************
  * Typedef definitions
  ***************************************************************************************************************************/
-
 /***************************************************************************************************************************
  * Imported global variables and functions (from other files)
  ***************************************************************************************************************************/
-
 //===== This area will be modified by Python ====
-// Define output tensors
+// Extern Variables
 //===============================================
-
-extern int8_t model_buffer_int8[IMAGE_DATA_SIZE];
-extern uint32_t model_buffer_int8_size;
 extern uint8_t g_apl_device[];
 extern uint8_t g_apl_configuration[];
 extern uint8_t g_apl_hs_configuration[];
@@ -61,7 +60,7 @@ volatile uint8_t first_time_flag = 1;
 volatile uint8_t g_inference_flag = 0;
 volatile uint8_t g_results_flag = 0;
 volatile uint64_t debug_id_pc = 0;
-uint64_t debug_id = 1753699350453; // AI Navi defined: DEBUG_ID
+uint64_t debug_id = 1704067200123; // AI Navi defined: DEBUG_ID
 /*********************************************************************************************************************
  *  display thread entry function
  *               This thread initializes all the hardware and display the camera input to the mipi lcd.
@@ -112,9 +111,11 @@ void usb_thread_entry(void *pvParameters)
                         //===== This area will be modified by Python ====
                         // Send number of output
                         //===============================================
+                        break;
                     }
                     if (g_results_flag == 2)
                     {
+                        g_results_flag = 3;
                         header.event = START_DATA_FRAME;
                         usb_write_data ((uint8_t*) &header, sizeof(header));
 
@@ -124,15 +125,18 @@ void usb_thread_entry(void *pvParameters)
                         //===== This area will be modified by Python ====
                         // Send model outputs
                         //===============================================
-
+                        break;
+                    }
+                    if(g_results_flag == 3){
                         header.event = END_DATA_FRAME;
                         usb_write_data ((uint8_t*) &header, sizeof(header));
                         g_results_flag = 0;
                     }
                 break;
                 case START_DATA_FRAME:
+                    //===== This area will be modified by Python ====
                     // Receive an image for AI inference
-                    usb_read_data ((uint8_t*) model_buffer_int8, IMAGE_DATA_SIZE);
+                    //===============================================
                 break;
                 case END_DATA_FRAME:
                     header.event = ACK;
@@ -158,7 +162,7 @@ void usb_thread_entry(void *pvParameters)
         {
 #if (BSP_CFG_DCACHE_ENABLED == 1)
             // Clean cache data because this buffer will be accessed by NPU hardware in subsequent process
-            SCB_CleanDCache_by_Addr ((uint8_t*) &model_buffer_int8[0], (int32_t) model_buffer_int8_size);
+            //SCB_CleanDCache_by_Addr ((uint8_t*) &model_buffer_int8[0], (int32_t) model_buffer_int8_size);
 #endif
             //Set AI inference input image ready flag. AI inference thread may waiting this flag set.
             xEventGroupSetBits (g_ai_app_event, AI_INFERENCE_INPUT_IMAGE_READY);

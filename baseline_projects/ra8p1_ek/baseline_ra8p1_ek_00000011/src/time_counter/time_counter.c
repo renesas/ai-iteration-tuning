@@ -4,7 +4,7 @@
 * SPDX-License-Identifier: BSD-3-Clause
 */
 /***********************************************************************************************************************
- * File Name    : dwt.c
+ * File Name    : time_counter.c
  * Description  : Contains function implementations for using the DWT.c
  **********************************************************************************************************************/
 

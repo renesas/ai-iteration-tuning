@@ -73,7 +73,9 @@ const gpt_extended_cfg_t g_time_counter_extend =
 #else
           .gtior_setting.gtior = 0U,
 #endif
-        };
+
+          .gtioca_polarity = GPT_GTIOC_POLARITY_NORMAL,
+          .gtiocb_polarity = GPT_GTIOC_POLARITY_NORMAL, };
 
 const timer_cfg_t g_time_counter_cfg =
 { .mode = TIMER_MODE_PERIODIC,

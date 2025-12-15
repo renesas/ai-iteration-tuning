@@ -4,8 +4,8 @@
 * SPDX-License-Identifier: BSD-3-Clause
 */
 /**********************************************************************************************************************
- * File Name    : console_output.c
- * Description  : This file defines the jlink console implementations.
+ * File Name    : ainavi_usb_data_frame.c
+ * Description  : This file defines usb communication data frame.
  **********************************************************************************************************************/
 #include "hal_data.h"
 #include "common_data.h"
@@ -97,7 +97,7 @@ fsp_err_t usb_read_data (uint8_t* buf, uint32_t len)
 fsp_err_t usb_write_data (uint8_t* buf, uint32_t len)
 {
     fsp_err_t fsp_err = FSP_SUCCESS;
-    g_receive_complete = 0;
+    g_transfer_complete = 0;
     g_operation_complete = 0;
     fsp_err = RM_COMMS_USB_PCDC_Write(&g_comms_usb_pcdc0_ctrl, buf, len);
     if (FSP_SUCCESS != fsp_err)

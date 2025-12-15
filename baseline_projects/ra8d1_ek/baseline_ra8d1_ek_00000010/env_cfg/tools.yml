@@ -1,0 +1,235 @@
+gcc:
+  name: 'gcc'
+  as_name: 'arm-none-eabi-gcc'
+  as_com: '$ISDEBUILD $AS $ASFLAGS $COMMON_FLAGS -c -o $TARGET $CHANGED_SOURCES $_CPPDEFFLAGS'
+  cc_name: 'arm-none-eabi-gcc'
+  cc_com: '$LDRA_HELPER $ISDEBUILD $CC $CFLAGS $C_FLAGS $CXX_FLAGS $COMMON_FLAGS $_CCCOMCOM -c -o $TARGET $CHANGED_SOURCES'
+  cpp_com: '$LDRA_HELPER $ISDEBUILD $CC $CFLAGS $CPP_FLAGS $CXX_FLAGS $COMMON_FLAGS $_CCCOMCOM -c -o $TARGET $CHANGED_SOURCES'
+  clang_tidy_com: '$CLANG_TIDY $CHANGED_SOURCES $FIX_OPTION -- -D${ARM_ARCH} --target=arm-none-eabi -mcpu=cortex-m${CLANG_TIDY_CORE} -isystem "$CLANG_ISYSTEM_PATH" $_CCCOMCOM'
+  link_name: 'arm-none-eabi-gcc'
+  link_com: '$LINK $COMMON_FLAGS $LINKFLAGS -o $TARGET $_LINKSCRIPTS $_LIBDIRFLAGS $_PDB @$LINKFILE $CMSE_IMPORT_LIB $_LIBFLAGS $_LIBFLAGS $_LIBINCFLAGS -lstdc++'
+  link_ext: '.ld'
+  link_script_prefix: '-T'
+  lib_prefix: '-l'
+  lib_dir_prefix: '-L'
+  lib_inc_prefix: '-L'
+  lib_inc_suffix: ''
+  ar_name: 'arm-none-eabi-ar'
+  ar_com: '$AR rc $TARGET $SOURCES'
+
+  optimization_levels:
+      none: '-O0'
+      speed: '-O3'
+      typical: '-O2'
+      size: '-Oz'
+
+  common_flags:
+      - '-mcpu=cortex-m${CORE}'
+      - '${ARM_ARCH_FLAGS}'
+      - '-mthumb'
+
+  cmse_flags:
+      - '-mcmse'
+  cmse_link_flags:
+      - '-Wl,--cmse-implib'
+      - '-Wl,--out-implib=${TARGET}.o'
+
+  fpu_flags:
+      - '-mfloat-abi=hard'
+      - '-mfpu=fpv${FPU_VERSION}-sp-d16'
+  fpu_link_flags:
+      - '-mfloat-abi=hard'
+      - '-mfpu=fpv${FPU_VERSION}-sp-d16'
+
+  as_flags:
+      - '-xassembler-with-cpp'
+      - '-c'
+
+  cxx_flags:
+      - '${OPTIMIZATION}'
+      - '-fmessage-length=0'
+      - '-fsigned-char'
+      - '-ffunction-sections'
+      - '-fdata-sections'
+      - '--param=min-pagesize=0'
+      - '-Wno-format-truncation'
+      - '-Wno-stringop-overflow'
+
+  c_flags:
+      - '-std=c99'
+      - '-x'
+      - 'c'
+      - '-flax-vector-conversions'
+      - '-Wconversion'
+      - '-Wfloat-equal'
+
+  cpp_flags:
+      - '-std=c++17'
+      - '-x'
+      - 'c++'
+      - '-fno-rtti'
+      - '-fno-exceptions'
+
+  fsp_flags:
+      - '-Wno-error'
+      - '-Wunused'
+      - '-Wuninitialized'
+      - '-Wall'
+      - '-Wextra'
+      - '-Wno-error=missing-declarations'
+      - '-Wno-sign-conversion'       # silence noisy sign-conversion in CMSIS sources
+      - '-Wpointer-arith'
+      - '-Wno-error=shadow'
+      - '-Wlogical-op'
+      - '-Wno-error=aggregate-return'
+      - '-Wno-error=sign-conversion'
+      - '-Wno-error=float-equal'
+      # uncomment only if needed:
+      - '-Wno-error=conversion'
+      - '-Wno-error=float-conversion'
+      - '-Wno-error=unused-variable'
+      - '-Wno-error=unused-parameter'
+      - '-Wno-error=implicit-fallthrough'
+  third_party_flags:
+      - '-Wno-error'                 # vendor warnings never become errors
+      - '-Wno-pragmas'               # ignore pragma-generated warnings
+      - '-Wno-error=pragmas'         # belt & suspenders if -Werror leaks in
+      - '-Wno-error=float-equal'     # common in CMSIS implementations
+      - '-Wno-error=sign-conversion'
+      - '-Wno-error=conversion'
+      - '-Wno-cpp'                   # ignore any #warning from vendor code
+      - '-Wno-error=aggregate-return'
+      - '-Wno-error=missing-declarations'
+      - '-Wno-error=implicit-fallthrough'
+
+  extra_flags:
+      - '-save-temps=obj'
+
+  debug_flags:
+      - '-g3'
+
+  link_flags:
+      - '-Xlinker'
+      - '--gc-sections'
+      - '--specs=rdimon.specs'
+      - '--specs=nano.specs'
+      - '-Wl,-Map,"${PROJECT_PATH}.map"'
+      - '-Wl,--no-warn-rwx-segments'
+
+  extra_env_vars: {}
+
+llvm:
+  name: 'llvm'
+  as_name: 'clang'
+  as_com: '$ISDEBUILD $AS $ASFLAGS $COMMON_FLAGS -c -o $TARGET $CHANGED_SOURCES $_CPPDEFFLAGS'
+  cc_name: 'clang'
+  cc_com: '$LDRA_HELPER $ISDEBUILD $CC $CFLAGS $C_FLAGS $CXX_FLAGS $COMMON_FLAGS $_CCCOMCOM -c -o $TARGET $CHANGED_SOURCES'
+  cpp_com: '$LDRA_HELPER $ISDEBUILD $CC $CFLAGS $CPP_FLAGS $CXX_FLAGS $COMMON_FLAGS $_CCCOMCOM -c -o $TARGET $CHANGED_SOURCES'
+  link_name: 'clang'
+  link_com: '$LINK $COMMON_FLAGS $LINKFLAGS -o $TARGET $_LINKSCRIPTS $_LIBDIRFLAGS $_PDB @$LINKFILE $CMSE_IMPORT_LIB $_LIBFLAGS $_LIBFLAGS $_LIBINCFLAGS -lc++abi'
+  link_ext: '.lld'
+  link_script_prefix: '-T'
+  lib_prefix: '-l'
+  lib_dir_prefix: '-L'
+  lib_inc_prefix: '-L'
+  lib_inc_suffix: ''
+  ar_name: 'llvm-ar'
+  ar_com: '$AR rc $TARGET $SOURCES'
+  optimization_levels:
+      none: '-O0'
+      speed: '-Ofast'
+      typical: '-O2'
+      size: '-Oz'
+  common_flags:                         # Flags that are passed to the compiler, assembler and linker
+      - '-mcpu=cortex-m${CORE}'
+      - '--target=arm-none-eabi'
+      - '${ARM_ARCH_FLAGS}'
+      - '-mthumb'
+      - '-fno-rtti'                     # LLVM 18 provides armv8.1m.main_hard_fpdp_nomve and armv8.1m.main_hard_fpdp_nomve_exn_rtti (supports RTTI etc.)
+      - '-fno-exceptions'               # armv8.1m.main_hard_fpdp_nomve should be used in FSP
+  cmse_flags:                           # Flags passed into secure project if the MCU supports CMSE
+      - '-mcmse'
+  cmse_link_flags:                      # Flags passed in to linker stage if the MCU supports CMSE
+      - '-Wl,--cmse-implib'
+      - '-Wl,--out-implib=${TARGET}.o'
+  fpu_flags:                            # Flags passed to the compiler if the MCU has a FPU
+      - '-mfloat-abi=hard'
+  fpu_link_flags:                       # Flags passed to the linker if the MCU has a FPU
+      - '-mfloat-abi=hard'
+  as_flags:                             # Flags passed to the assembler
+      - '-xassembler-with-cpp'
+      - '-c'
+  cxx_flags:                            # Flags passed to c and c++ compiler
+      - '${OPTIMIZATION}'
+      - '-fmessage-length=0'
+      - '-funsigned-char'
+      - '-ffunction-sections'
+      - '-fdata-sections'
+  c_flags:                              # Flags passed to the c compiler
+      - '-std=c99'
+      - '-x'
+      - 'c'
+      - '-flax-vector-conversions'
+      - '-fshort-enums'
+      - '-fno-unroll-loops'
+      - '-Wconversion'
+      - '-Wfloat-equal'
+  cpp_flags:                            # Flags passed to the c++ compiler
+      - '-std=c++17'
+      - '-x'
+      - 'c++'
+  fsp_flags:                            # Flags passed to FSP c and c++ compiler
+      - '-Werror'
+      - '-Wunused'
+      - '-Wuninitialized'
+      - '-Wall'
+      - '-Wextra'
+      - '-Wmissing-declarations'
+      - '-Wpointer-arith'
+      - '-Wshadow'
+      - '-Wno-parentheses-equality'
+      - '-Waggregate-return'
+      - '-Wno-error=sign-conversion'
+      - '-Wno-error=implicit-int-conversion'
+      - '-Wno-error=implicit-float-conversion'   # <-- added: demote your float-conversion from error→warning
+      - '-Wno-error=implicit-int-float-conversion'
+      - '-Wno-error=shorten-64-to-32'
+      - '-Wno-error=float-equal'
+      - '-Wno-error=shadow'
+      - '-Wno-error=unknown-attributes'
+      - '-Wno-error=unused-variable' 
+      - '-Wno-error=unused-parameter'
+      - '-Wno-error=implicit-function-declaration'
+      - '-Wno-error=float-conversion'
+      - '-Wno-error=incompatible-pointer-types-discards-qualifiers'
+     
+  third_party_flags:                    # Flags passed passed to third party c and c++ compiler
+      - '-w'
+      - '-Wno-error=implicit-function-declaration'
+      - '-Wno-error=int-conversion'
+      - '-Wno-error=sign-conversion'
+      - '-Wno-error=implicit-int-conversion'
+      - '-Wno-error=implicit-float-conversion'
+      - '-Wno-error=unused-variable'
+      - '-Wno-error=unused-parameter'
+      - '-Wno-error=shorten-64-to-32'
+      - '-Wno-error=implicit-int-float-conversion'
+      - '-Wno-error=float-equal'
+      - '-Wno-error=shadow'
+      - '-Wno-error=unknown-attributes'
+      - '-Wno-error=unknown-pragmas'   # ensure pragma noise isn’t fatal in clang
+      - '-Wno-pragma-messages'         # silence #pragma message in clang
+  extra_flags:
+      - '-save-temps=obj'
+  debug_flags:
+      - '-g3'
+      - '-gdwarf-4'
+  link_flags:                           # Flags passed to the linker
+      #- '-nostartfiles'
+      #- '-Wl,-T,script/llvm/fsp.lld'
+      - '-lcrt0'
+      - '-Xlinker'
+      - '--gc-sections'
+      - '-Wl,-Map,"${PROJECT_PATH}.map"'
+      #- '-Wl,-z,norelro'
+  extra_env_vars: {}

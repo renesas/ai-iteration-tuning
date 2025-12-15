@@ -43,7 +43,7 @@
     <no_instrument_files>        <!-- Do not instrument these for coverage -->
     </no_instrument_files>
     <linker_scripts>        <!-- relative to repository root or linker_paths -->
-        <script>script/${COMPILER}/fsp</script>
+        <script>script/fsp</script>
     </linker_scripts>
     <linker_includes>
         <path>ra/fsp/src/bsp/mcu/${MCU}/!linker/llvm</path>

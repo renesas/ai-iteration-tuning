@@ -800,9 +800,9 @@ class toolchain(object):
 
             self.third_party_flags = toolchain_info['third_party_flags'] # Parse CC flags for third party code
 
-            version_env = create_env()
+            # version_env = create_env()
             # OR with true so this will not fail build jobs if toolchains are not defined in tools_cfg_ref.xml
-            version_env.Command(self.name + '.version', None, self.cc_name + ' --version > ' + self.name + '.version || true')
+            # version_env.Command(self.name + '.version', None, self.cc_name + ' --version > ' + self.name + '.version || true')
 
             self.extra_flags = get_tc_info('extra_flags') # Parse Extra flags
             self.debug_flags = toolchain_info['debug_flags'] # Parse Debug flags
