@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+
+<project>
+    <common_macros>
+        <macro>_RA_CORE=CM85</macro>
+        <macro>SEGGER_RTT_SECTION=\".shared_rtt\"</macro>
+    </common_macros>
+    <linker_scripts>
+        <script>script/${COMPILER}/fsp_dual_core_tests</script>
+    </linker_scripts>
+</project>

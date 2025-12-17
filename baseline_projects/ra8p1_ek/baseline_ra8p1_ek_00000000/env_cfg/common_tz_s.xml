@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+
+<project>
+    <common_macros>
+        <macro>_RA_TZ_SECURE</macro>
+    </common_macros>
+    <linker_includes>
+        <path>ra/fsp/src/bsp/mcu/${MCU}/!linker/${COMPILER}/tz_s</path>
+    </linker_includes>
+</project>

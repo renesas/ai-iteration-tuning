@@ -1,4 +1,4 @@
-This is v0.1.0
+AI Iteration Tuning Baseline project v1.0.0
 
 Board: RA8D1
 Kit type: EK

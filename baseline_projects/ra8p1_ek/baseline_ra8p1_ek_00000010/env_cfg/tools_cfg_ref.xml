@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<tools_cfg>
+    <gcc_install>C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/13.2 Rel1</gcc_install>
+    <llvm_install>C:/LLVM-ET-Arm-18.1.3-Windows-x86_64/LLVM-ET-Arm-18.1.3-Windows-x86_64</llvm_install>
+    <!-- jlink_server is used by run_tests.py -->
+    <jlink_server>C:\Program Files\JLink</jlink_server>
+    <!-- Set to empty string if you wish to not use scons cache. -->
+    <!-- Example for using network share from Windows machine. NOTE, this was very slow over VPN. -->
+    <!-- Also, in my limited testing it does not appears that SCons can share cached files between Windows and Linux builds. -->
+    <!-- Disabling while we investigate improvements. -->
+    <!-- <     scons_cache_dir>C:/sons_cache</scons_cache_dir     > -->
+</tools_cfg>

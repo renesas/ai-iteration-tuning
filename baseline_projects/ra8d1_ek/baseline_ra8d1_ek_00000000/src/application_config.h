@@ -20,7 +20,6 @@
 
 //===== This area will be modified by Python ====
 // Define Backend
-#define BACKEND CPU
 //===============================================
 #define ALLOCATE_TO_ONCHIP_ROM              0
 #define ALLOCATE_TO_ONCHIP_RAM              1

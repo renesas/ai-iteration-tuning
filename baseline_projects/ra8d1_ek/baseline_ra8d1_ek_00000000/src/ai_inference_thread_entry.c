@@ -28,10 +28,6 @@
  ***************************************************************************************************************************/
 //===== This area will be modified by Python ====
 // Variable definitions
-uint8_t my_buffer[kBufferSize_sub_0000];
-int8 input_0[36864];
-int8 output_0[648];
-int8 output_1[2592];
 //===============================================
 /***************************************************************************************************************************
  * Exported global variables and functions (to be accessed by other files)
@@ -66,7 +62,6 @@ void ai_inference_thread_entry(void *pvParameters)
         volatile uint32_t old_counter =  TimeCounter_CurrentCountGet();
         //===== This area will be modified by Python ====
         // Run Model
-        compute_sub_0000(my_buffer, input_0, output_0, output_1);
         //===============================================
         volatile uint32_t new_counter = TimeCounter_CurrentCountGet();
         application_processing_time.ai_inference_time_ms = TimeCounter_CountValueConvertToMs(old_counter, new_counter);
